@@ -9,6 +9,7 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.local.example
 
 # Test and coverage output
 .pytest_cache/
@@ -25,3 +26,10 @@ media/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Next.js frontend build output and dependencies
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+frontend/npm-debug.log*

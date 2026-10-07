@@ -99,6 +99,28 @@ def test_search_filters_and_paginates_jobs(
 
 @pytest.mark.regression
 @pytest.mark.integration
+def test_recruiter_can_list_only_their_jobs(
+    api_client: ApiClient,
+    recruiter: dict[str, int | str],
+    user_factory: UserFactory,
+    job_factory: JobFactory,
+) -> None:
+    other_recruiter = user_factory.create("recruiter")
+    own_job = job_factory(recruiter)
+    job_factory(other_recruiter)
+
+    response = api_client.get(
+        "/api/v1/jobs/mine",
+        headers={"Authorization": f"Bearer {recruiter['token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == own_job["id"]
+
+
+@pytest.mark.regression
+@pytest.mark.integration
 def test_job_search_rejects_invalid_salary_range(
     api_client: ApiClient,
 ) -> None:

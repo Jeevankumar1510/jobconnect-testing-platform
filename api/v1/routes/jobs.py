@@ -60,6 +60,33 @@ def create_job(
     return job
 
 
+@router.get("/mine", response_model=JobPage)
+def list_my_jobs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    recruiter: User = Depends(get_current_recruiter),
+    db: Session = Depends(get_db),
+) -> JobPage:
+    filters = [Job.recruiter_id == recruiter.id]
+    total = db.scalar(
+        select(func.count()).select_from(Job).where(*filters)
+    ) or 0
+    items = db.scalars(
+        select(Job)
+        .where(*filters)
+        .order_by(Job.created_at.desc(), Job.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return JobPage(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=ceil(total / page_size),
+    )
+
+
 @router.get("", response_model=JobPage)
 def search_jobs(
     q: str | None = Query(default=None, max_length=100),

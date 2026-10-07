@@ -35,3 +35,16 @@ services:
         sync: false
       - key: DJANGO_SUPERUSER_PASSWORD
         sync: false
+
+  - type: web
+    name: jobconnect-frontend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: API_BASE_URL
+        sync: false
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

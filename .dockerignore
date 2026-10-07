@@ -12,4 +12,6 @@ reports/
 media/
 .git/
 .idea/
+frontend/node_modules/
+frontend/.next/
 .vscode/
