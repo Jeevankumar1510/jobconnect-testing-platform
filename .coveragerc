@@ -1,0 +1,17 @@
+[run]
+branch = True
+concurrency = thread
+source =
+    accounts
+    api
+    applications
+    config
+    jobs
+omit =
+    */__init__.py
+    */asgi.py
+    */wsgi.py
+
+[report]
+show_missing = True
+skip_covered = False
