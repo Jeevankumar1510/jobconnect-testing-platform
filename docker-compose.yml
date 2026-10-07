@@ -31,6 +31,12 @@ services:
 
   api:
     build: .
+    command:
+      [
+        "sh",
+        "-c",
+        "python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && exec uvicorn api.main:app --host 0.0.0.0 --port 8000",
+      ]
     environment: *app-environment
     ports:
       - "127.0.0.1:${API_PORT:-8001}:8000"
@@ -51,34 +57,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-    restart: unless-stopped
-
-  admin:
-    build: .
-    command:
-      [
-        "sh",
-        "-c",
-        "python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000",
-      ]
-    environment: *app-environment
-    ports:
-      - "127.0.0.1:8002:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/', timeout=2)",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 15s
     restart: unless-stopped
 
 volumes:
