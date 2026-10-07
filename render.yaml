@@ -1,0 +1,89 @@
+databases:
+  - name: jobconnect-db
+    databaseName: jobconnect
+    user: jobconnect
+    plan: free
+    region: singapore
+    ipAllowList: []
+
+services:
+  - type: web
+    name: jobconnect-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: jobconnect-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: jobconnect-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: jobconnect-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: jobconnect-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: jobconnect-db
+          property: port
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: RESUME_STORAGE_DIR
+        value: /app/media/resumes
+      - key: MAX_RESUME_SIZE_BYTES
+        value: "5242880"
+
+  - type: web
+    name: jobconnect-admin
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: /bin/sh -c 'python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && exec gunicorn adminpanel.wsgi:application --bind 0.0.0.0:$PORT'
+    healthCheckPath: /admin/login/
+    envVars:
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: jobconnect-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: jobconnect-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: jobconnect-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: jobconnect-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: jobconnect-db
+          property: port
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
