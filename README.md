@@ -81,9 +81,8 @@ npm run build
 
 The `render.yaml` Blueprint defines the FastAPI/Django service and a separate
 Next.js frontend service. This is a separate service for the web UI—not for
-Django Admin, which remains part of the backend service. When prompted for
-`API_BASE_URL`, enter the public HTTPS URL of the `jobconnect-api` service.
+Django Admin, which remains part of the backend service. The Blueprint sets the
+frontend's `API_BASE_URL` to the public HTTPS URL of the backend service.
 
-Use the API service's public HTTPS URL as `API_BASE_URL` for the frontend service.
 Configure the PostgreSQL connection and Django Admin credentials in Render's
 environment settings; do not commit secrets.

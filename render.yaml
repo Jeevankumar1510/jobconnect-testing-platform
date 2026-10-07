@@ -45,6 +45,6 @@ services:
     dockerContext: ./frontend
     envVars:
       - key: API_BASE_URL
-        sync: false
+        value: https://jobconnect-testing-platform.onrender.com
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
