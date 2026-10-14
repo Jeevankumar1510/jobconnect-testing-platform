@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from config.database import Base
@@ -42,6 +42,18 @@ class Job(Base):
         default=JobStatus.OPEN,
         index=True,
         nullable=False,
+    )
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    external_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    company_logo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    experience_level: Mapped[str] = mapped_column(String(50), default="fresher", index=True, nullable=False)
+    is_fresher: Mapped[bool] = mapped_column(Boolean, default=True, index=True, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

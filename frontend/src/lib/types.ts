@@ -5,6 +5,9 @@ export type User = {
   email: string;
   role: Role;
   created_at: string;
+  resume_filename?: string | null;
+  has_saved_resume?: boolean;
+  headline?: string | null;
 };
 
 export type Job = {
@@ -18,6 +21,12 @@ export type Job = {
   salary_min: string | number | null;
   salary_max: string | number | null;
   status: "open" | "closed";
+  is_external?: boolean;
+  external_url?: string | null;
+  company_logo?: string | null;
+  source?: string | null;
+  experience_level?: string;
+  is_fresher?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -39,6 +48,9 @@ export type Application = {
   resume_content_type: string;
   created_at: string;
   updated_at: string;
+  job_title?: string | null;
+  company?: string | null;
+  external_url?: string | null;
 };
 
 export type Page<T> = {

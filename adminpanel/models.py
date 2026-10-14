@@ -5,6 +5,8 @@ class PortalUser(models.Model):
     id = models.AutoField(primary_key=True)
     email = models.EmailField(max_length=320)
     role = models.CharField(max_length=20)
+    resume_filename = models.CharField(max_length=255, null=True, blank=True)
+    headline = models.CharField(max_length=200, null=True, blank=True)
     created_at = models.DateTimeField()
 
     class Meta:
@@ -38,6 +40,11 @@ class JobPosting(models.Model):
         blank=True,
     )
     status = models.CharField(max_length=20)
+    is_external = models.BooleanField(default=False)
+    external_url = models.CharField(max_length=500, null=True, blank=True)
+    source = models.CharField(max_length=50, null=True, blank=True)
+    experience_level = models.CharField(max_length=50, default="fresher")
+    is_fresher = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

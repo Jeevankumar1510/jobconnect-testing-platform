@@ -8,25 +8,33 @@ import {
   BriefcaseBusiness,
   Check,
   ChevronDown,
+  Download,
+  ExternalLink,
   FileText,
+  Loader2,
   MapPin,
   Plus,
   Send,
+  Trash2,
+  UploadCloud,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import {
   ApiError,
+  deleteProfileResume,
   getJobApplications,
   getMyApplications,
   getMyJobs,
   request,
   updateApplicationStatus,
+  uploadProfileResume,
 } from "@/lib/api";
-import type { Application, ApplicationStatus, Job, Page } from "@/lib/types";
+import type { Application, ApplicationStatus, Job, Page, User } from "@/lib/types";
 
 const transitions: Record<ApplicationStatus, ApplicationStatus[]> = {
   submitted: ["reviewing", "rejected"],
@@ -37,15 +45,15 @@ const transitions: Record<ApplicationStatus, ApplicationStatus[]> = {
 };
 
 const statusLabels: Record<ApplicationStatus, string> = {
-  submitted: "New",
-  reviewing: "In review",
-  interview: "Interview",
-  rejected: "Not selected",
-  accepted: "Offer",
+  submitted: "Submitted",
+  reviewing: "In Review",
+  interview: "Interviewing",
+  rejected: "Not Selected",
+  accepted: "Offer Extended",
 };
 
 export default function DashboardPage() {
-  const { user, token, ready } = useAuth();
+  const { user, token, ready, refreshProfile } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -55,13 +63,35 @@ export default function DashboardPage() {
   if (!ready || !user || !token) {
     return <main className="page-loading"><div className="loader" />Opening your space…</main>;
   }
-  return user.role === "recruiter" ? <RecruiterDashboard token={token} email={user.email} /> : <CandidateDashboard token={token} email={user.email} />;
+  return user.role === "recruiter" ? (
+    <RecruiterDashboard token={token} email={user.email} />
+  ) : (
+    <CandidateDashboard
+      token={token}
+      email={user.email}
+      user={user}
+      refreshProfile={refreshProfile}
+    />
+  );
 }
 
-function CandidateDashboard({ token, email }: { token: string; email: string }) {
+function CandidateDashboard({
+  token,
+  email,
+  user,
+  refreshProfile,
+}: {
+  token: string;
+  email: string;
+  user: User;
+  refreshProfile: () => Promise<void>;
+}) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeMsg, setResumeMsg] = useState("");
+  const [resumeError, setResumeError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -93,27 +123,237 @@ function CandidateDashboard({ token, email }: { token: string; email: string }) 
       .finally(() => setBusy(false));
   }
 
+  async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResumeUploading(true);
+    setResumeError("");
+    setResumeMsg("");
+    try {
+      await uploadProfileResume(file, token);
+      await refreshProfile();
+      setResumeMsg("Default resume updated! You can now 1-click apply to any job.");
+      setTimeout(() => setResumeMsg(""), 5000);
+    } catch (err: unknown) {
+      setResumeError(err instanceof Error ? err.message : "Failed to upload resume.");
+    } finally {
+      setResumeUploading(false);
+    }
+  }
+
+  async function handleResumeDelete() {
+    if (!confirm("Are you sure you want to remove your default saved resume?")) return;
+    setResumeUploading(true);
+    setResumeError("");
+    try {
+      await deleteProfileResume(token);
+      await refreshProfile();
+      setResumeMsg("Default resume removed.");
+      setTimeout(() => setResumeMsg(""), 4000);
+    } catch (err: unknown) {
+      setResumeError(err instanceof Error ? err.message : "Failed to remove resume.");
+    } finally {
+      setResumeUploading(false);
+    }
+  }
+
   return (
     <main className="dashboard-page">
       <div className="dashboard-welcome">
         <div>
           <div className="eyebrow eyebrow-light"><span className="online-dot" /> YOUR CANDIDATE SPACE</div>
           <h1>Good things are <span className="serif-accent">in motion.</span></h1>
-          <p>Welcome back, {email}. Keep an eye on what’s next.</p>
+          <p>Welcome back, {email}. Keep track of your job applications and profile resume.</p>
         </div>
         <Link href="/" className="button button-primary"><BriefcaseBusiness size={16} /> Explore opportunities</Link>
       </div>
+
       <div className="dashboard-stats">
-        <div className="stat-card"><span className="stat-icon lavender"><Send size={18} /></span><span className="stat-label">Applications sent</span><strong>{busy ? "—" : applications.length}</strong><small>Every next step counts</small></div>
-        <div className="stat-card"><span className="stat-icon mint"><Check size={18} /></span><span className="stat-label">In the conversation</span><strong>{busy ? "—" : applications.filter((item) => item.status === "reviewing" || item.status === "interview").length}</strong><small>Moving forward together</small></div>
-        <div className="stat-card"><span className="stat-icon peach"><BriefcaseBusiness size={18} /></span><span className="stat-label">Your next chapter</span><strong className="stat-word">Out there</strong><small>Find a role that feels right</small></div>
+        <div className="stat-card">
+          <span className="stat-icon lavender"><Send size={18} /></span>
+          <span className="stat-label">Applications sent</span>
+          <strong>{busy ? "—" : applications.length}</strong>
+          <small>Every application is tracked</small>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon mint"><Check size={18} /></span>
+          <span className="stat-label">Active Conversations</span>
+          <strong>{busy ? "—" : applications.filter((item) => item.status === "reviewing" || item.status === "interview").length}</strong>
+          <small>In review or interview</small>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon peach"><Zap size={18} /></span>
+          <span className="stat-label">1-Click Apply Ready</span>
+          <strong className="stat-word">{user.has_saved_resume || user.resume_filename ? "Active" : "Upload"}</strong>
+          <small>{user.has_saved_resume || user.resume_filename ? "Instant apply enabled" : "Add resume below"}</small>
+        </div>
       </div>
-      <section className="dashboard-section">
-        <div className="dashboard-section-heading"><div><span className="eyebrow eyebrow-light">YOUR JOURNEY</span><h2>Applications</h2></div><button className="button button-secondary button-small" onClick={refresh}>Refresh</button></div>
-        {error && <div className="alert alert-error">{error}</div>}
-        {busy ? <div className="dashboard-empty"><div className="loader" />Loading your applications…</div> : applications.length ? <div className="application-list">{applications.map((application) => <div className="candidate-application" key={application.id}><div className="application-company-mark">{String(application.job_id).padStart(2, "0")}</div><div className="application-summary"><span className="eyebrow eyebrow-light">JOB #{application.job_id}</span><h3>Application #{application.id}</h3><p><FileText size={14} /> {application.resume_filename}</p><small>Sent {new Date(application.created_at).toLocaleDateString()}</small></div><span className={`status-pill status-${application.status}`}>{statusLabels[application.status]}</span><Link className="card-arrow" href={`/jobs/${application.job_id}`} aria-label="View opportunity"><ArrowUpRight size={18} /></Link></div>)}</div> : <div className="empty-state"><Send size={24} /><h3>Your next step starts here</h3><p>You haven’t applied to a role yet. Take a look around and see what feels right.</p><Link className="button button-primary" href="/">Explore open roles <ArrowRight size={16} /></Link></div>}
+
+      {/* Candidate Default Resume Section */}
+      <section className="dashboard-section resume-profile-card">
+        <div className="dashboard-section-heading">
+          <div>
+            <span className="eyebrow eyebrow-light">SPEED UP YOUR SEARCH</span>
+            <h2>My 1-Click Profile Resume</h2>
+            <p>Save your default resume to apply directly to any job with a single click.</p>
+          </div>
+        </div>
+
+        {resumeMsg && <div className="alert alert-success">{resumeMsg}</div>}
+        {resumeError && <div className="alert alert-error">{resumeError}</div>}
+
+        {user.has_saved_resume || user.resume_filename ? (
+          <div className="active-resume-box">
+            <div className="active-resume-details">
+              <div className="active-resume-icon">
+                <FileText size={24} />
+              </div>
+              <div>
+                <strong>{user.resume_filename || "Saved Profile Resume"}</strong>
+                <span className="text-emerald-700 text-xs font-medium flex items-center gap-1 mt-0.5">
+                  <Check size={13} /> Active & Ready for 1-Click Apply on all job postings
+                </span>
+              </div>
+            </div>
+            <div className="active-resume-actions">
+              <a
+                href="/api/backend/api/v1/auth/me/resume"
+                download={user.resume_filename || "resume.pdf"}
+                className="button button-outline button-small"
+              >
+                <Download size={14} /> Download
+              </a>
+              <label className="button button-secondary button-small cursor-pointer">
+                <UploadCloud size={14} />
+                {resumeUploading ? "Updating..." : "Replace File"}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="sr-only"
+                  onChange={handleResumeUpload}
+                  disabled={resumeUploading}
+                />
+              </label>
+              <button
+                type="button"
+                className="button button-ghost button-small text-rose-600"
+                onClick={handleResumeDelete}
+                disabled={resumeUploading}
+                title="Remove resume"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-resume-box">
+            <div className="empty-resume-content">
+              <UploadCloud size={32} className="text-emerald-600" />
+              <div>
+                <strong>No default resume uploaded yet</strong>
+                <p>Upload a PDF or DOCX resume to unlock 1-click applications across all jobs.</p>
+              </div>
+            </div>
+            <label className="button button-primary cursor-pointer">
+              {resumeUploading ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Uploading...
+                </>
+              ) : (
+                <>
+                  <UploadCloud size={15} /> Upload Default Resume
+                </>
+              )}
+              <input
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="sr-only"
+                onChange={handleResumeUpload}
+                disabled={resumeUploading}
+              />
+            </label>
+          </div>
+        )}
       </section>
-      <div className="dashboard-tip"><span>✳</span><p><strong>A little reminder:</strong> Every application is a step toward a place where you can do your best work.</p></div>
+
+      {/* Applications list */}
+      <section className="dashboard-section">
+        <div className="dashboard-section-heading">
+          <div>
+            <span className="eyebrow eyebrow-light">YOUR JOURNEY</span>
+            <h2>My Submitted Applications</h2>
+          </div>
+          <button className="button button-secondary button-small" onClick={refresh}>
+            Refresh
+          </button>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        {busy ? (
+          <div className="dashboard-empty"><div className="loader" />Loading your applications…</div>
+        ) : applications.length ? (
+          <div className="application-list">
+            {applications.map((application) => (
+              <div className="candidate-application" key={application.id}>
+                <div className="application-company-mark">
+                  {application.company ? application.company.slice(0, 1).toUpperCase() : String(application.job_id).padStart(2, "0")}
+                </div>
+                <div className="application-summary">
+                  <div className="flex items-center gap-2">
+                    <span className="eyebrow eyebrow-light">
+                      {application.company || `JOB #${application.job_id}`}
+                    </span>
+                    {application.external_url && (
+                      <span className="badge-partner text-xs">Partner Role</span>
+                    )}
+                  </div>
+                  <h3>{application.job_title || `Application #${application.id}`}</h3>
+                  <div className="flex items-center gap-3 text-xs text-stone-500 mt-1">
+                    <span className="flex items-center gap-1">
+                      <FileText size={13} /> {application.resume_filename}
+                    </span>
+                    <span>Applied {new Date(application.created_at).toLocaleDateString()}</span>
+                  </div>
+                  {application.external_url && (
+                    <div className="mt-2">
+                      <a
+                        href={application.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-link text-xs inline-flex items-center gap-1"
+                      >
+                        Visit Partner Career Page <ExternalLink size={12} />
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <span className={`status-pill status-${application.status}`}>
+                  {statusLabels[application.status]}
+                </span>
+                <Link
+                  className="card-arrow"
+                  href={`/jobs/${application.job_id}`}
+                  aria-label="View opportunity"
+                >
+                  <ArrowUpRight size={18} />
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Send size={24} />
+            <h3>Your next step starts here</h3>
+            <p>You haven’t applied to a role yet. Explore hundreds of direct and partner postings.</p>
+            <Link className="button button-primary" href="/">
+              Explore open roles <ArrowRight size={16} />
+            </Link>
+          </div>
+        )}
+      </section>
+      <div className="dashboard-tip">
+        <span>✳</span>
+        <p><strong>A little reminder:</strong> Every application is a step toward a place where you can do your best work.</p>
+      </div>
     </main>
   );
 }
@@ -196,6 +436,7 @@ function JobForm({ token, onCancel, onCreated }: { token: string; onCancel: () =
       location: String(form.get("location") ?? ""),
       description: String(form.get("description") ?? ""),
       employment_type: String(form.get("employment_type") ?? "full_time"),
+      experience_level: String(form.get("experience_level") ?? "fresher"),
       salary_min: salaryMin ? Number(salaryMin) : null,
       salary_max: salaryMax ? Number(salaryMax) : null,
     };
@@ -211,17 +452,43 @@ function JobForm({ token, onCancel, onCreated }: { token: string; onCancel: () =
 
   return (
     <section className="job-form-panel">
-      <div className="form-panel-heading"><div><span className="eyebrow eyebrow-light">MAKE AN INTRODUCTION</span><h2>Post a new role</h2></div><button className="icon-button" onClick={onCancel} aria-label="Close role form"><X size={20} /></button></div>
+      <div className="form-panel-heading">
+        <div>
+          <span className="eyebrow eyebrow-light">🇮🇳 INDIA IT FRESHER &amp; TECH PORTAL</span>
+          <h2>Post an Indian IT Fresher / Junior Role</h2>
+        </div>
+        <button className="icon-button" onClick={onCancel} aria-label="Close role form"><X size={20} /></button>
+      </div>
+      <div className="text-xs text-stone-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3">
+        <strong>Strict India IT Focus:</strong> JobConnect is dedicated strictly to India locations (Bengaluru, Hyderabad, Pune, Remote - India) and IT / Tech domains (Software, Data/AI, QA, Cloud, Security) for Freshers (0–2 years). Non-IT or foreign roles are rejected.
+      </div>
       {error && <div className="alert alert-error">{error}</div>}
       <form className="job-create-form" onSubmit={submit}>
-        <label>Role title<input name="title" placeholder="e.g. Product Designer" required maxLength={150} /></label>
-        <label>Company<input name="company" placeholder="Your company" required maxLength={150} /></label>
-        <label>Location<input name="location" placeholder="City, country, or Remote" required maxLength={150} /></label>
-        <label>Employment type<select name="employment_type" defaultValue="full_time"><option value="full_time">Full-time</option><option value="part_time">Part-time</option><option value="contract">Contract</option><option value="internship">Internship</option></select></label>
-        <label>Salary from<input name="salary_min" type="number" min="0" step="0.01" placeholder="Optional" /></label>
-        <label>Salary to<input name="salary_max" type="number" min="0" step="0.01" placeholder="Optional" /></label>
-        <label className="form-full">Tell people about the role<textarea name="description" rows={5} required placeholder="The work, the team, and what makes this opportunity special…" /></label>
-        <div className="form-full form-actions"><button type="button" className="button button-secondary" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? "Publishing…" : "Publish role"} <ArrowUpRight size={16} /></button></div>
+        <label>IT Role title<input name="title" placeholder="e.g. Associate Software Engineer, Junior React Dev" required maxLength={150} /></label>
+        <label>Company<input name="company" placeholder="e.g. Tech Solutions Pvt Ltd" required maxLength={150} /></label>
+        <label>Indian Location<input name="location" placeholder="e.g. Bengaluru, Hyderabad, Pune, or Remote (India)" required maxLength={150} /></label>
+        <label>Experience target
+          <select name="experience_level" defaultValue="fresher">
+            <option value="fresher">🌱 Fresher / Entry Level (0-1 yr)</option>
+            <option value="internship">🎓 Tech Internship / Graduate Trainee</option>
+            <option value="junior">⚡ Junior Engineer (1-2 yrs)</option>
+          </select>
+        </label>
+        <label>Employment type
+          <select name="employment_type" defaultValue="full_time">
+            <option value="full_time">Full-time</option>
+            <option value="internship">Internship</option>
+            <option value="part_time">Part-time</option>
+            <option value="contract">Contract</option>
+          </select>
+        </label>
+        <label>Annual Salary From (₹ INR)<input name="salary_min" type="number" min="0" step="1000" placeholder="e.g. 400000 (₹4 LPA)" /></label>
+        <label>Annual Salary To (₹ INR)<input name="salary_max" type="number" min="0" step="1000" placeholder="e.g. 750000 (₹7.5 LPA)" /></label>
+        <label className="form-full">Opportunity &amp; Tech Stack Details<textarea name="description" rows={5} required placeholder="Tech stack (Python, React, Java, AWS, etc.), mentorship, training, and fresher eligibility..." /></label>
+        <div className="form-full form-actions">
+          <button type="button" className="button button-secondary" onClick={onCancel}>Cancel</button>
+          <button className="button button-primary" disabled={busy}>{busy ? "Publishing…" : "Publish India IT Role"} <ArrowUpRight size={16} /></button>
+        </div>
       </form>
     </section>
   );

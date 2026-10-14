@@ -27,3 +27,7 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    resume_storage_key: Mapped[str | None] = mapped_column(String(41), nullable=True)
+    resume_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resume_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    headline: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -78,11 +78,26 @@ export async function login(
   });
 }
 
+export function getJobDetails(jobId: number): Promise<Job> {
+  return request(`/jobs/${jobId}`);
+}
+
 export function searchJobs(
   params: URLSearchParams,
 ): Promise<Page<Job>> {
   const query = params.toString();
   return request(`/jobs${query ? `?${query}` : ""}`);
+}
+
+export function syncExternalJobs(limit = 25): Promise<{
+  status: string;
+  imported: number;
+  updated: number;
+  total_active_jobs: number;
+}> {
+  return request(`/jobs/sync-external?limit=${limit}`, {
+    method: "POST",
+  });
 }
 
 export function getMyJobs(token: string): Promise<Page<Job>> {
@@ -109,5 +124,54 @@ export function updateApplicationStatus(
     token,
     method: "PATCH",
     json: { status },
+  });
+}
+
+export async function uploadProfileResume(file: File, token: string): Promise<User> {
+  const formData = new FormData();
+  formData.append("resume", file);
+  return request("/auth/me/resume", {
+    token,
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function deleteProfileResume(token: string): Promise<User> {
+  return request("/auth/me/resume", {
+    token,
+    method: "DELETE",
+  });
+}
+
+export async function applyToJob(
+  options: {
+    jobId: number;
+    coverLetter?: string;
+    resume?: File | null;
+    useSavedResume?: boolean;
+    saveAsProfileResume?: boolean;
+  },
+  token: string,
+): Promise<Application> {
+  const formData = new FormData();
+  formData.append("job_id", String(options.jobId));
+  if (options.coverLetter?.trim()) {
+    formData.append("cover_letter", options.coverLetter.trim());
+  }
+  if (options.useSavedResume) {
+    formData.append("use_saved_resume", "true");
+  }
+  if (options.saveAsProfileResume) {
+    formData.append("save_as_profile_resume", "true");
+  }
+  if (options.resume) {
+    formData.append("resume", options.resume);
+  }
+
+  return request("/applications", {
+    token,
+    method: "POST",
+    body: formData,
   });
 }

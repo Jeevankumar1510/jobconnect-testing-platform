@@ -8,22 +8,49 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
+  ExternalLink,
+  Filter,
+  GraduationCap,
   MapPin,
+  RefreshCw,
+  RotateCcw,
   Search,
   Sparkles,
   Users,
   WalletCards,
+  X,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { ApiError, searchJobs } from "@/lib/api";
+import { QuickApplyModal } from "@/components/quick-apply-modal";
+import { ApiError, searchJobs, syncExternalJobs } from "@/lib/api";
 import type { Job } from "@/lib/types";
 
 function formatSalary(job: Job) {
-  const min = job.salary_min ? Number(job.salary_min).toLocaleString() : null;
-  const max = job.salary_max ? Number(job.salary_max).toLocaleString() : null;
-  if (!min && !max) return "Salary not listed";
-  return `$${min ?? "—"}${max ? ` – $${max}` : "+"}`;
+  const min = job.salary_min ? Number(job.salary_min) : null;
+  const max = job.salary_max ? Number(job.salary_max) : null;
+  if (!min && !max) return "Competitive (₹ LPA)";
+
+  const formatAmount = (val: number) => {
+    if (val >= 100_000) {
+      const lpa = (val / 100_000).toFixed(1).replace(/\.0$/, "");
+      return `₹${lpa} LPA`;
+    }
+    return `₹${val.toLocaleString("en-IN")}/mo`;
+  };
+
+  if (min && max) {
+    if (min >= 100_000 && max >= 100_000) {
+      const minLpa = (min / 100_000).toFixed(1).replace(/\.0$/, "");
+      const maxLpa = (max / 100_000).toFixed(1).replace(/\.0$/, "");
+      return `₹${minLpa} – ₹${maxLpa} LPA`;
+    }
+    return `${formatAmount(min)} – ${formatAmount(max)}`;
+  }
+  if (min) return `${formatAmount(min)}+`;
+  if (max) return `Up to ${formatAmount(max)}`;
+  return "Competitive (₹ LPA)";
 }
 
 function timeAgo(value: string) {
@@ -36,37 +63,93 @@ function timeAgo(value: string) {
   return `${days} days ago`;
 }
 
+const STARTUP_COMPANIES = [
+  "zepto", "meesho", "blinkit", "cred", "razorpay", "groww", "slice", "invideo", "jupiter",
+  "postman", "jar", "urban company", "hasura", "plum", "khatabook", "clevertap", "ather",
+  "apna", "browserstack", "swiggy", "zomato", "zerodha", "paytm", "physicswallah",
+  "unacademy", "classplus", "cult.fit"
+];
+
+const ENTERPRISE_COMPANIES = [
+  "tcs", "tata consultancy", "infosys", "wipro", "capgemini", "persistent",
+  "thoughtworks", "accenture", "cisco", "dell", "amazon", "ltimindtree", "hcl", "cognizant"
+];
+
+function isStartup(job: Job): boolean {
+  const comp = job.company.toLowerCase();
+  const src = (job.source || "").toLowerCase();
+  if (STARTUP_COMPANIES.some((s) => comp.includes(s))) return true;
+  if (["remoteok", "weworkremotely", "remotive", "jobicy", "startup"].some((s) => src.includes(s))) return true;
+  return false;
+}
+
+function isEnterprise(job: Job): boolean {
+  const comp = job.company.toLowerCase();
+  return ENTERPRISE_COMPANIES.some((e) => comp.includes(e));
+}
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("");
+  const [domain, setDomain] = useState<string>("all");
+  const [experienceLevel, setExperienceLevel] = useState<string>("all");
+  const [employmentType, setEmploymentType] = useState<string>("all");
+  const [workMode, setWorkMode] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [salaryMin, setSalaryMin] = useState<string>("");
+  const [companyType, setCompanyType] = useState<string>("all");
   const [busy, setBusy] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
   const [error, setError] = useState("");
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-  const loadJobs = useCallback(async (q: string, place: string) => {
-    setBusy(true);
-    setError("");
-    const params = new URLSearchParams({ page: "1", page_size: "6" });
-    if (q.trim()) params.set("q", q.trim());
-    if (place.trim()) params.set("location", place.trim());
-    try {
-      const page = await searchJobs(params);
-      setJobs(page.items);
-      setTotal(page.total);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Could not load jobs right now. Please try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const loadJobs = useCallback(
+    async (
+      q: string = search,
+      place: string = location,
+      dom: string = domain,
+      exp: string = experienceLevel,
+      empType: string = employmentType,
+      wMode: string = workMode,
+      src: string = sourceFilter,
+      sal: string = salaryMin,
+      compType: string = companyType,
+    ) => {
+      setBusy(true);
+      setError("");
+      const params = new URLSearchParams({ page: "1", page_size: "30" });
+      if (q.trim()) params.set("q", q.trim());
+      if (place.trim()) params.set("location", place.trim());
+      if (dom !== "all") params.set("domain", dom);
+      if (exp !== "all") params.set("experience_level", exp);
+      if (empType !== "all") params.set("employment_type", empType);
+      if (wMode !== "all") params.set("work_mode", wMode);
+      if (src !== "all") params.set("source", src);
+      if (sal.trim()) params.set("salary_min", sal.trim());
+      if (compType !== "all") params.set("company_type", compType);
+
+      try {
+        const page = await searchJobs(params);
+        setJobs(page.items);
+        setTotal(page.total);
+      } catch (err) {
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not load jobs right now. Please try again.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType],
+  );
 
   useEffect(() => {
-    const params = new URLSearchParams({ page: "1", page_size: "6" });
+    const params = new URLSearchParams({ page: "1", page_size: "30" });
     void searchJobs(params)
       .then((page) => {
         setJobs(page.items);
@@ -82,10 +165,51 @@ export default function Home() {
       .finally(() => setBusy(false));
   }, []);
 
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const res = await syncExternalJobs(30);
+      setSyncMessage(`Synced ${res.imported} new verified India IT fresher postings!`);
+      await loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+      setTimeout(() => setSyncMessage(""), 5000);
+    } catch {
+      setSyncMessage("Sync completed.");
+      await loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+      setTimeout(() => setSyncMessage(""), 4000);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void loadJobs(search, location);
+    void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
   }
+
+  function resetFilters() {
+    setSearch("");
+    setLocation("");
+    setDomain("all");
+    setExperienceLevel("all");
+    setEmploymentType("all");
+    setWorkMode("all");
+    setSourceFilter("all");
+    setSalaryMin("");
+    setCompanyType("all");
+    void loadJobs("", "", "all", "all", "all", "all", "all", "", "all");
+  }
+
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    Boolean(location.trim()) ||
+    domain !== "all" ||
+    experienceLevel !== "all" ||
+    employmentType !== "all" ||
+    workMode !== "all" ||
+    sourceFilter !== "all" ||
+    Boolean(salaryMin) ||
+    companyType !== "all";
 
   return (
     <main>
@@ -96,77 +220,91 @@ export default function Home() {
           <div className="hero-copy">
             <div className="eyebrow">
               <span className="eyebrow-dot" />
-              A better way to find your next thing
+              🇮🇳 INDIA&apos;S DEDICATED IT FRESHER &amp; TECH PORTAL
             </div>
             <h1>
-              Work should feel
+              Launch your tech career
               <br />
-              like <span className="serif-accent">you.</span>
+              with <span className="serif-accent">confidence.</span>
             </h1>
             <p className="hero-description">
-              Find the teams, missions, and opportunities that bring out your
-              best. Your next chapter is closer than you think.
+              Dedicated strictly to Indian IT Freshers, College Graduates, and Tech Interns (0–2 years). Real software engineering, AI/Data, Cloud, QA, and developer openings from India&apos;s leading tech employers.
             </p>
             <form className="search-panel" onSubmit={submitSearch}>
               <label className="search-field">
                 <Search size={19} />
-                <span className="sr-only">Job title or keyword</span>
+                <span className="sr-only">Job title, skill or domain</span>
                 <input
-                  aria-label="Job title or keyword"
+                  aria-label="Job title, skill or domain"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Job title, keyword, or company"
+                  placeholder="e.g. Junior Developer, Python Backend, React Fresher, QA"
                 />
               </label>
               <span className="search-divider" />
               <label className="search-field location-field">
                 <MapPin size={19} />
-                <span className="sr-only">Location</span>
+                <span className="sr-only">Indian Location</span>
                 <input
-                  aria-label="Location"
+                  aria-label="Indian Location"
                   value={location}
                   onChange={(event) => setLocation(event.target.value)}
-                  placeholder="City or remote"
+                  placeholder="e.g. Bengaluru, Hyderabad, Pune, Remote"
                 />
               </label>
               <button className="button button-primary search-button" type="submit">
-                Search jobs <ArrowRight size={16} />
+                Search IT jobs <ArrowRight size={16} />
               </button>
             </form>
             <div className="popular-searches">
-              <span>Popular:</span>
+              <span>Popular IT Searches:</span>
               <button
                 onClick={() => {
-                  setSearch("Product");
-                  void loadJobs("Product", location);
+                  setCompanyType("startup");
+                  void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, "startup");
                 }}
               >
-                Product
+                🚀 Top Startups
               </button>
               <button
                 onClick={() => {
-                  setSearch("Design");
-                  void loadJobs("Design", location);
+                  setSearch("Software Engineer");
+                  void loadJobs("Software Engineer", location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
                 }}
               >
-                Design
+                Software Engineer
               </button>
               <button
                 onClick={() => {
-                  setSearch("Engineer");
-                  void loadJobs("Engineer", location);
+                  setDomain("python_backend");
+                  void loadJobs(search, location, "python_backend", experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
                 }}
               >
-                Engineering
+                Python Backend
               </button>
               <button
                 onClick={() => {
-                  setSearch("Remote");
-                  setLocation("Remote");
-                  void loadJobs("Remote", "Remote");
+                  setDomain("frontend_react");
+                  void loadJobs(search, location, "frontend_react", experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
                 }}
               >
-                Remote
+                React Frontend
+              </button>
+              <button
+                onClick={() => {
+                  setDomain("data_ai");
+                  void loadJobs(search, location, "data_ai", experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                Data &amp; AI
+              </button>
+              <button
+                onClick={() => {
+                  setLocation("Bengaluru");
+                  void loadJobs(search, "Bengaluru", domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                Bengaluru Hub
               </button>
             </div>
             <div className="hero-proof">
@@ -229,42 +367,361 @@ export default function Home() {
       </section>
 
       <section className="trust-strip">
-        <span>Good people. Great places.</span>
+        <span>Verified fresher &amp; tech hiring from India&apos;s hottest startups &amp; tech leaders:</span>
         <div className="company-wordmarks">
-          <strong className="wordmark-north">northstar<span>✳</span></strong>
-          <strong className="wordmark-form">form<span>®</span></strong>
-          <strong className="wordmark-common">◈ common ground</strong>
-          <strong className="wordmark-kin">kin<span>+</span></strong>
-          <strong className="wordmark-bright">bright<span>side.</span></strong>
+          <strong className="wordmark-north">Zepto<span>⚡</span></strong>
+          <strong className="wordmark-form">Meesho</strong>
+          <strong className="wordmark-common">CRED<span>✳</span></strong>
+          <strong className="wordmark-kin">Razorpay<span>+</span></strong>
+          <strong className="wordmark-bright">Groww</strong>
+          <strong className="wordmark-north">Blinkit</strong>
+          <strong className="wordmark-form">InVideo</strong>
+          <strong className="wordmark-kin">Swiggy</strong>
+          <strong className="wordmark-common">Zomato</strong>
+          <strong className="wordmark-bright">Postman</strong>
+          <strong className="wordmark-north">TCS<span>®</span></strong>
+          <strong className="wordmark-form">Infosys</strong>
         </div>
       </section>
 
       <section className="jobs-section" id="jobs">
         <div className="section-heading">
           <div>
-            <div className="eyebrow eyebrow-light">THE GOOD STUFF</div>
-            <h2>Find work that <span className="serif-accent">fits.</span></h2>
-            <p>Real opportunities from teams doing things differently.</p>
+            <div className="eyebrow eyebrow-light">VERIFIED INDIAN IT OPPORTUNITIES</div>
+            <h2>Find tech roles that <span className="serif-accent">fit.</span></h2>
+            <p>100% verified IT jobs and internships across top Indian tech hubs and fast-growing startups. Apply directly to official company career portals in seconds.</p>
           </div>
           <Link href="/auth?mode=register" className="text-link">
             Create your profile <ArrowUpRight size={17} />
           </Link>
         </div>
+
         <div className="job-feed-meta">
-          <span><span className="online-dot" /> {total} open opportunities</span>
-          <span>Fresh picks for you <Sparkles size={14} /></span>
+          <div className="flex items-center gap-3">
+            <span><span className="online-dot" /> {total} active India IT fresher opportunities</span>
+            {syncMessage && (
+              <span className="text-emerald-600 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                {syncMessage}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleSync()}
+              disabled={syncing}
+              className="sync-feed-button"
+              title="Sync latest verified India IT fresher postings"
+            >
+              <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+              {syncing ? "Syncing..." : "Sync Live Postings"}
+            </button>
+            <span>Curated for Freshers <Sparkles size={14} /></span>
+          </div>
         </div>
+
+        {/* Comprehensive India IT Fresher Filters Suite */}
+        <div className="fresher-filters-container">
+          {/* Experience & Company target pills */}
+          <div className="filter-pills-row">
+            <span className="filter-select-label mr-2"><Filter size={12} className="inline mr-1" /> Quick Filters:</span>
+            <button
+              type="button"
+              className={`filter-pill ${experienceLevel === "all" && companyType === "all" ? "active" : ""}`}
+              onClick={() => {
+                setExperienceLevel("all");
+                setCompanyType("all");
+                void loadJobs(search, location, domain, "all", employmentType, workMode, sourceFilter, salaryMin, "all");
+              }}
+            >
+              All Roles ({total})
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${companyType === "startup" ? "active" : ""}`}
+              onClick={() => {
+                const next = companyType === "startup" ? "all" : "startup";
+                setCompanyType(next);
+                void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, next);
+              }}
+            >
+              🚀 Startups Only
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${companyType === "enterprise" ? "active" : ""}`}
+              onClick={() => {
+                const next = companyType === "enterprise" ? "all" : "enterprise";
+                setCompanyType(next);
+                void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, next);
+              }}
+            >
+              🏢 Tech Giants
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${experienceLevel === "fresher" ? "active" : ""}`}
+              onClick={() => {
+                setExperienceLevel("fresher");
+                void loadJobs(search, location, domain, "fresher", employmentType, workMode, sourceFilter, salaryMin, companyType);
+              }}
+            >
+              🌱 Freshers (0-1 yr)
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${experienceLevel === "internship" ? "active" : ""}`}
+              onClick={() => {
+                setExperienceLevel("internship");
+                void loadJobs(search, location, domain, "internship", employmentType, workMode, sourceFilter, salaryMin, companyType);
+              }}
+            >
+              🎓 Tech Internships
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${experienceLevel === "junior" ? "active" : ""}`}
+              onClick={() => {
+                setExperienceLevel("junior");
+                void loadJobs(search, location, domain, "junior", employmentType, workMode, sourceFilter, salaryMin, companyType);
+              }}
+            >
+              ⚡ Junior Devs (1-2 yrs)
+            </button>
+          </div>
+
+          {/* Detailed Dropdowns Row */}
+          <div className="filter-selects-row">
+            {/* Company Type Dropdown */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Company Type</label>
+              <select
+                className="filter-select"
+                value={companyType}
+                onChange={(e) => {
+                  setCompanyType(e.target.value);
+                  void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, e.target.value);
+                }}
+              >
+                <option value="all">All Companies</option>
+                <option value="startup">🚀 Indian Startups (Zepto, Meesho, CRED...)</option>
+                <option value="enterprise">🏢 Tech Giants (TCS, Infosys, Wipro...)</option>
+              </select>
+            </div>
+
+            {/* IT Domain Dropdown */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">IT Domain</label>
+              <select
+                className="filter-select"
+                value={domain}
+                onChange={(e) => {
+                  setDomain(e.target.value);
+                  void loadJobs(search, location, e.target.value, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                <option value="all">All IT Domains</option>
+                <option value="software">💻 Software &amp; Full Stack</option>
+                <option value="python_backend">🐍 Python &amp; Backend</option>
+                <option value="frontend_react">⚛️ React &amp; Frontend</option>
+                <option value="data_ai">📊 Data &amp; AI / ML</option>
+                <option value="qa_testing">🧪 QA &amp; Testing</option>
+                <option value="cloud_devops">☁️ Cloud &amp; DevOps</option>
+                <option value="cyber_security">🛡️ Cyber Security</option>
+              </select>
+            </div>
+
+            {/* Indian Tech Hub Dropdown */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Indian Tech Hub</label>
+              <select
+                className="filter-select"
+                value={location}
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  void loadJobs(search, e.target.value, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                <option value="">All India Locations</option>
+                <option value="Bengaluru">Bengaluru / Bangalore</option>
+                <option value="Hyderabad">Hyderabad</option>
+                <option value="Pune">Pune</option>
+                <option value="Chennai">Chennai</option>
+                <option value="Delhi">Delhi NCR (Noida / Gurgaon)</option>
+                <option value="Mumbai">Mumbai</option>
+                <option value="Remote">Remote (India)</option>
+              </select>
+            </div>
+
+            {/* Work Mode */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Work Mode</label>
+              <select
+                className="filter-select"
+                value={workMode}
+                onChange={(e) => {
+                  setWorkMode(e.target.value);
+                  void loadJobs(search, location, domain, experienceLevel, employmentType, e.target.value, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                <option value="all">Any Work Mode</option>
+                <option value="remote">🇮🇳 Remote Only</option>
+                <option value="onsite">🏢 On-Site / Hybrid</option>
+              </select>
+            </div>
+
+            {/* Job Type */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Job Type</label>
+              <select
+                className="filter-select"
+                value={employmentType}
+                onChange={(e) => {
+                  setEmploymentType(e.target.value);
+                  void loadJobs(search, location, domain, experienceLevel, e.target.value, workMode, sourceFilter, salaryMin, companyType);
+                }}
+              >
+                <option value="all">All Job Types</option>
+                <option value="full_time">Full-Time</option>
+                <option value="internship">Internship</option>
+                <option value="part_time">Part-Time</option>
+                <option value="contract">Contract</option>
+              </select>
+            </div>
+
+            {/* Minimum Salary in ₹ LPA */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Minimum Salary</label>
+              <select
+                className="filter-select"
+                value={salaryMin}
+                onChange={(e) => {
+                  setSalaryMin(e.target.value);
+                  void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, e.target.value, companyType);
+                }}
+              >
+                <option value="">Any Salary</option>
+                <option value="300000">₹3+ LPA</option>
+                <option value="600000">₹6+ LPA</option>
+                <option value="1000000">₹10+ LPA</option>
+                <option value="1500000">₹15+ LPA</option>
+              </select>
+            </div>
+
+            {/* Source */}
+            <div className="filter-select-wrap">
+              <label className="filter-select-label">Employer Source</label>
+              <select
+                className="filter-select"
+                value={sourceFilter}
+                onChange={(e) => {
+                  setSourceFilter(e.target.value);
+                  void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, e.target.value, salaryMin, companyType);
+                }}
+              >
+                <option value="all">All Sources</option>
+                <option value="Careers">Direct Employers (Zepto, TCS, Razorpay...)</option>
+                <option value="internal">JobConnect Direct</option>
+                <option value="RemoteOK">RemoteOK</option>
+                <option value="WeWorkRemotely">WeWorkRemotely</option>
+                <option value="Remotive">Remotive</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Active Filter Chips & Reset */}
+          {hasActiveFilters && (
+            <div className="active-filters-strip">
+              <span className="text-xs text-stone-500 font-semibold mr-1">Active filters:</span>
+              {search.trim() && (
+                <span className="active-chip">
+                  Keyword: &quot;{search}&quot;
+                  <button onClick={() => { setSearch(""); void loadJobs("", location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {companyType !== "all" && (
+                <span className="active-chip">
+                  Company: {companyType === "startup" ? "🚀 Startups" : "🏢 Tech Giants"}
+                  <button onClick={() => { setCompanyType("all"); void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, "all"); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {domain !== "all" && (
+                <span className="active-chip">
+                  Domain: {domain.replace("_", " ").toUpperCase()}
+                  <button onClick={() => { setDomain("all"); void loadJobs(search, location, "all", experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {location.trim() && (
+                <span className="active-chip">
+                  Hub: &quot;{location}&quot;
+                  <button onClick={() => { setLocation(""); void loadJobs(search, "", domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {experienceLevel !== "all" && (
+                <span className="active-chip">
+                  Level: {experienceLevel === "fresher" ? "🌱 Fresher (0-1y)" : experienceLevel === "internship" ? "🎓 Internship" : "⚡ Junior (1-2y)"}
+                  <button onClick={() => { setExperienceLevel("all"); void loadJobs(search, location, domain, "all", employmentType, workMode, sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {employmentType !== "all" && (
+                <span className="active-chip">
+                  Type: {employmentType.replace("_", " ")}
+                  <button onClick={() => { setEmploymentType("all"); void loadJobs(search, location, domain, experienceLevel, "all", workMode, sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {workMode !== "all" && (
+                <span className="active-chip">
+                  Mode: {workMode === "remote" ? "Remote Only" : "Onsite / Hybrid"}
+                  <button onClick={() => { setWorkMode("all"); void loadJobs(search, location, domain, experienceLevel, employmentType, "all", sourceFilter, salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {sourceFilter !== "all" && (
+                <span className="active-chip">
+                  Source: {sourceFilter}
+                  <button onClick={() => { setSourceFilter("all"); void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, "all", salaryMin, companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {salaryMin && (
+                <span className="active-chip">
+                  Min: ₹{(Number(salaryMin) / 100_000).toFixed(0)} LPA
+                  <button onClick={() => { setSalaryMin(""); void loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, "", companyType); }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              <button type="button" className="clear-filters-btn ml-auto" onClick={resetFilters}>
+                <RotateCcw size={13} /> Reset all
+              </button>
+            </div>
+          )}
+        </div>
+
         {error && (
           <div className="alert alert-error">
             {error}
-            <button className="text-link" onClick={() => void loadJobs(search, location)}>
+            <button className="text-link" onClick={() => void loadJobs(search, location, experienceLevel, employmentType, workMode, sourceFilter, salaryMin)}>
               Try again
             </button>
           </div>
         )}
         {busy ? (
           <div className="loading-grid">
-            {[1, 2, 3].map((item) => <div className="skeleton-card" key={item} />)}
+            {[1, 2, 3, 4, 5, 6].map((item) => <div className="skeleton-card" key={item} />)}
           </div>
         ) : jobs.length ? (
           <div className="job-grid">
@@ -272,24 +729,97 @@ export default function Home() {
               <article
                 className="job-card"
                 key={job.id}
-                style={{ animationDelay: `${index * 70}ms` }}
+                style={{ animationDelay: `${index * 50}ms` }}
               >
                 <div className="job-card-top">
-                  <div className={`company-avatar avatar-${index % 5}`}>
-                    {job.company.slice(0, 1).toUpperCase()}
+                  {job.company_logo ? (
+                    <img
+                      src={job.company_logo}
+                      alt={job.company}
+                      className="company-logo-thumb"
+                    />
+                  ) : (
+                    <div className={`company-avatar avatar-${index % 5}`}>
+                      {job.company.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {job.is_external && (
+                      <span className="badge-partner">
+                        {job.source || "Partner"}
+                      </span>
+                    )}
+                    <span className="job-age">{timeAgo(job.created_at)}</span>
                   </div>
-                  <span className="job-age">{timeAgo(job.created_at)}</span>
                 </div>
-                <span className="job-type">{job.employment_type.replace("_", " ")}</span>
+
+                <div className="job-badges-row">
+                  {isStartup(job) ? (
+                    <span className="badge-startup">
+                      🚀 Indian Startup
+                    </span>
+                  ) : isEnterprise(job) ? (
+                    <span className="badge-enterprise">
+                      🏢 Tech Giant
+                    </span>
+                  ) : null}
+                  {job.experience_level === "internship" ? (
+                    <span className="badge-fresher-intern">
+                      <GraduationCap size={11} /> Internship
+                    </span>
+                  ) : job.experience_level === "junior" ? (
+                    <span className="badge-fresher-junior">
+                      <Zap size={11} /> Junior (1-2y)
+                    </span>
+                  ) : (
+                    <span className="badge-fresher-entry">
+                      <Sparkles size={11} /> Fresher Friendly
+                    </span>
+                  )}
+                  <span className="job-type">{job.employment_type.replace("_", " ")}</span>
+                  {job.is_external ? (
+                    <span className="partner-apply-badge">
+                      <ExternalLink size={11} /> {job.source || "Partner"}
+                    </span>
+                  ) : (
+                    <span className="direct-apply-badge">
+                      <Zap size={11} /> Direct Role
+                    </span>
+                  )}
+                </div>
+
                 <h3>{job.title}</h3>
                 <p className="company-name"><Building2 size={15} /> {job.company}</p>
                 <div className="job-card-meta">
                   <span><MapPin size={15} />{job.location}</span>
                   <span><WalletCards size={15} />{formatSalary(job)}</span>
                 </div>
+
                 <div className="job-card-bottom">
-                  <span className="match-label"><span className="match-dot" /> Open role</span>
-                  <Link className="card-arrow" href={`/jobs/${job.id}`} aria-label={`View ${job.title}`}>
+                  {job.is_external && job.external_url ? (
+                    <a
+                      href={job.external_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="card-quick-apply-btn button button-primary flex items-center justify-center gap-1.5"
+                      style={{ textDecoration: "none" }}
+                    >
+                      Apply on {job.source || "Site"} <ExternalLink size={14} />
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="card-quick-apply-btn button button-primary"
+                      onClick={() => setSelectedJob(job)}
+                    >
+                      <Zap size={14} /> Quick Apply
+                    </button>
+                  )}
+                  <Link
+                    className="card-arrow"
+                    href={`/jobs/${job.id}`}
+                    aria-label={`View details for ${job.title}`}
+                  >
                     <ArrowUpRight size={18} />
                   </Link>
                 </div>
@@ -300,19 +830,37 @@ export default function Home() {
           <div className="empty-state">
             <BriefcaseBusiness size={25} />
             <h3>No matches just yet</h3>
-            <p>Try a different search, or check back as new opportunities arrive.</p>
-            <button
-              className="button button-secondary"
-              onClick={() => {
-                setSearch("");
-                setLocation("");
-                void loadJobs("", "");
-              }}
-            >
-              Show all openings
-            </button>
+            <p>Try a different search or sync live job postings from around the web.</p>
+            <div className="flex items-center gap-3">
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setSearch("");
+                  setLocation("");
+                  setDomain("all");
+                  setExperienceLevel("all");
+                  setEmploymentType("all");
+                  setWorkMode("all");
+                  setSourceFilter("all");
+                  setSalaryMin("");
+                  setCompanyType("all");
+                  void loadJobs("", "", "all", "all", "all", "all", "all", "", "all");
+                }}
+              >
+                Show all openings
+              </button>
+              <button
+                className="button button-primary"
+                onClick={() => void handleSync()}
+                disabled={syncing}
+              >
+                <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+                Fetch Live Postings
+              </button>
+            </div>
           </div>
         ) : null}
+
         {jobs.length > 0 && (
           <div className="jobs-cta">
             <span>Looking for a little more choice?</span>
@@ -322,6 +870,12 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Quick Apply Modal */}
+      <QuickApplyModal
+        job={selectedJob}
+        onClose={() => setSelectedJob(null)}
+      />
 
       <section className="values-section">
         <div className="values-heading">

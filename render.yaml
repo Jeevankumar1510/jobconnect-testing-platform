@@ -1,3 +1,10 @@
+databases:
+  - name: jobconnect-db
+    databaseName: jobconnect
+    user: jobconnect
+    plan: free
+    region: singapore
+
 services:
   - type: web
     name: jobconnect-api
@@ -6,22 +13,38 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: /bin/sh -c 'python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && exec uvicorn api.main:app --host 0.0.0.0 --port "$PORT"'
+    dockerCommand: /bin/sh -c 'python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && python manage.py sync_jobs --limit 30 && exec uvicorn api.main:app --host 0.0.0.0 --port "$PORT"'
     healthCheckPath: /api/v1/health
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jobconnect-db
+          property: connectionString
       - key: POSTGRES_DB
-        sync: false
+        fromDatabase:
+          name: jobconnect-db
+          property: database
       - key: POSTGRES_USER
-        sync: false
+        fromDatabase:
+          name: jobconnect-db
+          property: user
       - key: POSTGRES_PASSWORD
-        sync: false
+        fromDatabase:
+          name: jobconnect-db
+          property: password
       - key: POSTGRES_HOST
-        sync: false
+        fromDatabase:
+          name: jobconnect-db
+          property: host
       - key: POSTGRES_PORT
-        sync: false
+        fromDatabase:
+          name: jobconnect-db
+          property: port
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: CRON_SECRET
         generateValue: true
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
@@ -30,11 +53,11 @@ services:
       - key: MAX_RESUME_SIZE_BYTES
         value: "5242880"
       - key: DJANGO_SUPERUSER_USERNAME
-        sync: false
+        value: admin
       - key: DJANGO_SUPERUSER_EMAIL
-        sync: false
+        value: admin@jobconnect.local
       - key: DJANGO_SUPERUSER_PASSWORD
-        sync: false
+        generateValue: true
 
   - type: web
     name: jobconnect-frontend
@@ -45,6 +68,6 @@ services:
     dockerContext: ./frontend
     envVars:
       - key: API_BASE_URL
-        value: https://jobconnect-testing-platform.onrender.com
+        value: https://jobconnect-api.onrender.com
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"

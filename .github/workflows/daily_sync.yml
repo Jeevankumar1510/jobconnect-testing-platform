@@ -1,0 +1,38 @@
+name: Daily Job Sync
+
+on:
+  schedule:
+    # Runs at 00:00 UTC (05:30 AM IST) every single day
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  daily-sync:
+    name: Sync Fresh IT Jobs to Render
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger JobConnect Daily Sync Endpoint
+        env:
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL || 'https://jobconnect-api.onrender.com' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          echo "Targeting Render API: $RENDER_API_URL"
+          ENDPOINT="${RENDER_API_URL%/}/api/v1/jobs/cron-sync"
+          
+          if [ -n "$CRON_SECRET" ]; then
+            echo "Calling endpoint with configured CRON_SECRET..."
+            RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$ENDPOINT?secret=$CRON_SECRET" || curl -s -w "\nHTTP_STATUS:%{http_code}" -X GET "$ENDPOINT?secret=$CRON_SECRET")
+          else
+            echo "Calling endpoint without secret..."
+            RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$ENDPOINT" || curl -s -w "\nHTTP_STATUS:%{http_code}" -X GET "$ENDPOINT")
+          fi
+          
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | tr -d '\r' | sed -n 's/^HTTP_STATUS://p')
+          
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
+            echo "✅ Daily job sync succeeded with HTTP $STATUS"
+          else
+            echo "⚠️ Warning: Endpoint returned HTTP $STATUS. (If Render service is currently sleeping or booting, the built-in server background worker will sync automatically upon wakeup)."
+          fi

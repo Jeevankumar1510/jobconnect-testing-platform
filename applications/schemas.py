@@ -17,6 +17,9 @@ class ApplicationRead(BaseModel):
     resume_content_type: str
     created_at: datetime
     updated_at: datetime
+    job_title: str | None = None
+    company: str | None = None
+    external_url: str | None = None
 
 
 class ApplicationStatusUpdate(BaseModel):

@@ -1,15 +1,18 @@
+import os
+import urllib.parse
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 
 class Settings(BaseSettings):
-    postgres_db: str
-    postgres_user: str
-    postgres_password: SecretStr
+    postgres_db: str = ""
+    postgres_user: str = ""
+    postgres_password: SecretStr = SecretStr("")
     jwt_secret_key: SecretStr
     django_secret_key: SecretStr
     postgres_host: str = "127.0.0.1"
@@ -23,6 +26,25 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_db_from_url(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            db_url = data.get("DATABASE_URL") or os.environ.get("DATABASE_URL")
+            if db_url:
+                parsed = urllib.parse.urlparse(db_url)
+                if not data.get("postgres_user") and parsed.username:
+                    data["postgres_user"] = parsed.username
+                if not data.get("postgres_password") and parsed.password:
+                    data["postgres_password"] = parsed.password
+                if not data.get("postgres_host") and parsed.hostname:
+                    data["postgres_host"] = parsed.hostname
+                if not data.get("postgres_port") and parsed.port:
+                    data["postgres_port"] = parsed.port
+                if not data.get("postgres_db") and parsed.path:
+                    data["postgres_db"] = parsed.path.lstrip("/")
+        return data
 
     @field_validator("jwt_secret_key")
     @classmethod

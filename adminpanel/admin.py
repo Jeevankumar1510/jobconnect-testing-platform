@@ -30,13 +30,15 @@ class JobPostingAdmin(admin.ModelAdmin):
         "id",
         "title",
         "company",
+        "source",
+        "is_external",
         "recruiter_id",
         "location",
         "employment_type",
         "status",
         "created_at",
     )
-    list_filter = ("status", "employment_type", "location")
+    list_filter = ("status", "is_external", "source", "employment_type", "location")
     search_fields = ("title", "company", "location", "description")
     readonly_fields = ("id", "created_at", "updated_at")
 

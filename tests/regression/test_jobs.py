@@ -130,3 +130,87 @@ def test_job_search_rejects_invalid_salary_range(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.regression
+@pytest.mark.integration
+def test_job_creation_rejects_non_it_and_non_india_locations(
+    api_client: ApiClient,
+    recruiter: dict[str, int | str],
+) -> None:
+    headers = {"Authorization": f"Bearer {recruiter['token']}"}
+
+    # Reject non-IT role
+    non_it = api_client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Experienced Tilesetter",
+            "company": "Tile Co",
+            "location": "Bengaluru",
+            "description": "Laying ceramic tiles.",
+            "employment_type": "full_time",
+        },
+        headers=headers,
+    )
+    assert non_it.status_code == 422
+    assert "IT & Tech roles" in non_it.json()["detail"]
+
+    # Reject non-India location
+    non_india = api_client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Junior Software Engineer",
+            "company": "Berlin Tech",
+            "location": "Berlin, Germany",
+            "description": "Backend API development in Python.",
+            "employment_type": "full_time",
+        },
+        headers=headers,
+    )
+    assert non_india.status_code == 422
+    assert "India locations only" in non_india.json()["detail"]
+
+    # Accept India IT role
+    valid_india = api_client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Junior Python Developer",
+            "company": "Bangalore Tech Labs",
+            "location": "Bengaluru, Karnataka",
+            "description": "Build FastAPI microservices and tests.",
+            "employment_type": "full_time",
+        },
+        headers=headers,
+    )
+    assert valid_india.status_code == 201
+    assert valid_india.json()["title"] == "Junior Python Developer"
+    assert valid_india.json()["location"] == "Bengaluru, Karnataka"
+
+
+@pytest.mark.regression
+@pytest.mark.integration
+def test_cron_sync_endpoint(
+    api_client: ApiClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test without secret when no secret is configured
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    resp = api_client.get("/api/v1/jobs/cron-sync")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+
+    # Test with secret when CRON_SECRET is configured
+    monkeypatch.setenv("CRON_SECRET", "super-secret-cron-key-12345")
+    unauth = api_client.get("/api/v1/jobs/cron-sync")
+    assert unauth.status_code == 401
+
+    auth_query = api_client.get("/api/v1/jobs/cron-sync?secret=super-secret-cron-key-12345")
+    assert auth_query.status_code == 200
+
+    auth_header = api_client.post(
+        "/api/v1/jobs/cron-sync",
+        headers={"X-Cron-Secret": "super-secret-cron-key-12345"},
+    )
+    assert auth_header.status_code == 200
+
+

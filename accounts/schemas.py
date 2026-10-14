@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 
 
 class UserRole(str, Enum):
@@ -27,6 +27,14 @@ class UserRead(BaseModel):
     email: EmailStr
     role: UserRole
     created_at: datetime
+    resume_filename: str | None = None
+    headline: str | None = None
+    resume_storage_key: str | None = Field(default=None, exclude=True)
+
+    @computed_field
+    @property
+    def has_saved_resume(self) -> bool:
+        return bool(self.resume_storage_key)
 
 
 class TokenResponse(BaseModel):

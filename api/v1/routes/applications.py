@@ -23,6 +23,10 @@ from accounts.dependencies import get_current_user
 from accounts.models import User, UserRole
 from applications.enums import ApplicationStatus
 from applications.models import Application
+from applications.resume_validator import (
+    ALLOWED_RESUME_TYPES,
+    read_and_validate_resume,
+)
 from applications.schemas import (
     ApplicationPage,
     ApplicationRead,
@@ -35,10 +39,6 @@ from jobs.models import Job
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-ALLOWED_RESUME_TYPES = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
 ALLOWED_STATUS_TRANSITIONS = {
     ApplicationStatus.SUBMITTED: {
         ApplicationStatus.REVIEWING,
@@ -101,50 +101,6 @@ def authorize_application_view(
     )
 
 
-async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]:
-    filename = Path(resume.filename or "").name
-    extension = Path(filename).suffix.lower()
-    content_type = ALLOWED_RESUME_TYPES.get(extension)
-    if content_type is None:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Resume must be a PDF or DOCX file",
-        )
-
-    max_size = get_settings().max_resume_size_bytes
-    content = await resume.read(max_size + 1)
-    if len(content) > max_size:
-        limit_mib = max_size / (1024 * 1024)
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"Resume exceeds the {limit_mib:g} MiB upload limit",
-        )
-    if not content:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Resume file cannot be empty",
-        )
-
-    if extension == ".pdf":
-        valid_content = content.startswith(b"%PDF-")
-    else:
-        try:
-            with ZipFile(BytesIO(content)) as archive:
-                valid_content = {
-                    "[Content_Types].xml",
-                    "word/document.xml",
-                }.issubset(archive.namelist())
-        except BadZipFile:
-            valid_content = False
-
-    if not valid_content:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="File content does not match a valid PDF or DOCX resume",
-        )
-    return content, filename[:255], content_type
-
-
 @router.post(
     "",
     response_model=ApplicationRead,
@@ -153,10 +109,12 @@ async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]
 async def apply_for_job(
     job_id: int = Form(..., gt=0),
     cover_letter: str | None = Form(default=None, max_length=5000),
-    resume: UploadFile = File(...),
+    resume: UploadFile | None = File(default=None),
+    use_saved_resume: bool = Form(default=False),
+    save_as_profile_resume: bool = Form(default=False),
     candidate: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Application:
+) -> ApplicationRead:
     require_role(candidate, UserRole.CANDIDATE)
     job = db.get(Job, job_id)
     if job is None or job.status != JobStatus.OPEN:
@@ -177,7 +135,45 @@ async def apply_for_job(
             detail="You have already applied for this job",
         )
 
-    content, filename, content_type = await read_and_validate_resume(resume)
+    # Determine whether using uploaded resume or saved profile resume
+    content: bytes
+    filename: str
+    content_type: str
+
+    if use_saved_resume or (resume is None and candidate.resume_storage_key):
+        if not candidate.resume_storage_key:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="No saved resume found on your profile. Please upload a resume file.",
+            )
+        saved_path = get_settings().resume_storage_dir / candidate.resume_storage_key
+        if not saved_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Saved profile resume file not found on disk. Please upload a new resume.",
+            )
+        content = saved_path.read_bytes()
+        filename = candidate.resume_filename or "saved_resume.pdf"
+        content_type = candidate.resume_content_type or "application/pdf"
+    elif resume is not None:
+        content, filename, content_type = await read_and_validate_resume(resume)
+        if save_as_profile_resume or not candidate.resume_storage_key:
+            # Also save to candidate's profile
+            profile_key = f"{uuid4()}{Path(filename).suffix.lower()}"
+            profile_path = get_settings().resume_storage_dir / profile_key
+            profile_path.parent.mkdir(parents=True, exist_ok=True)
+            profile_path.write_bytes(content)
+            if candidate.resume_storage_key:
+                (get_settings().resume_storage_dir / candidate.resume_storage_key).unlink(missing_ok=True)
+            candidate.resume_storage_key = profile_key
+            candidate.resume_filename = filename
+            candidate.resume_content_type = content_type
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Resume file is required. Please upload a PDF or DOCX resume, or save one to your profile.",
+        )
+
     storage_key = f"{uuid4()}{Path(filename).suffix.lower()}"
     resume_path = get_settings().resume_storage_dir / storage_key
     resume_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,7 +202,12 @@ async def apply_for_job(
         resume_path.unlink(missing_ok=True)
         raise
     db.refresh(application)
-    return application
+
+    app_read = ApplicationRead.model_validate(application)
+    app_read.job_title = job.title
+    app_read.company = job.company
+    app_read.external_url = job.external_url
+    return app_read
 
 
 @router.get("/mine", response_model=ApplicationPage)
@@ -221,13 +222,23 @@ def list_my_applications(
     total = db.scalar(
         select(func.count()).select_from(Application).where(*filters)
     ) or 0
-    items = db.scalars(
-        select(Application)
+    rows = db.execute(
+        select(Application, Job.title, Job.company, Job.external_url)
+        .outerjoin(Job, Application.job_id == Job.id)
         .where(*filters)
         .order_by(Application.created_at.desc(), Application.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
+
+    items: list[ApplicationRead] = []
+    for app, job_title, company, external_url in rows:
+        app_read = ApplicationRead.model_validate(app)
+        app_read.job_title = job_title
+        app_read.company = company
+        app_read.external_url = external_url
+        items.append(app_read)
+
     return ApplicationPage(
         items=items,
         total=total,
@@ -305,11 +316,15 @@ def get_application_details(
     application_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Application:
+) -> ApplicationRead:
     application = get_application(application_id, db)
     job = get_application_job(application, db)
     authorize_application_view(application, job, user)
-    return application
+    app_read = ApplicationRead.model_validate(application)
+    app_read.job_title = job.title
+    app_read.company = job.company
+    app_read.external_url = job.external_url
+    return app_read
 
 
 @router.patch("/{application_id}/status", response_model=ApplicationRead)

@@ -12,6 +12,8 @@ class JobCreate(BaseModel):
     location: str = Field(min_length=1, max_length=150)
     description: str = Field(min_length=1)
     employment_type: EmploymentType
+    experience_level: str = Field(default="fresher", max_length=50)
+    is_fresher: bool = Field(default=True)
     salary_min: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     salary_max: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
@@ -32,6 +34,8 @@ class JobUpdate(BaseModel):
     location: str | None = Field(default=None, min_length=1, max_length=150)
     description: str | None = Field(default=None, min_length=1)
     employment_type: EmploymentType | None = None
+    experience_level: str | None = Field(default=None, max_length=50)
+    is_fresher: bool | None = None
     salary_min: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     salary_max: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     status: JobStatus | None = None
@@ -69,9 +73,15 @@ class JobRead(BaseModel):
     location: str
     description: str
     employment_type: EmploymentType
+    experience_level: str = "fresher"
+    is_fresher: bool = True
     salary_min: Decimal | None
     salary_max: Decimal | None
     status: JobStatus
+    is_external: bool = False
+    external_url: str | None = None
+    company_logo: str | None = None
+    source: str | None = None
     created_at: datetime
     updated_at: datetime
 
