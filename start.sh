@@ -10,8 +10,6 @@ python manage.py collectstatic --noinput
 echo "==> Bootstrapping Django admin..."
 python manage.py bootstrap_admin || true
 
-echo "==> Syncing initial jobs..."
-python manage.py sync_jobs --limit 30 || true
-
 echo "==> Starting Uvicorn server on port ${PORT:-8000}..."
 exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+

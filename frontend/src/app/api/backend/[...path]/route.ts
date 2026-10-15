@@ -8,7 +8,15 @@ type RouteContext = {
 };
 
 async function forward(request: NextRequest, context: RouteContext) {
-  const baseUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+  const baseUrl = (
+    process.env.API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+
   if (!baseUrl) {
     return Response.json(
       { detail: "The API_BASE_URL server setting is not configured." },
@@ -36,6 +44,20 @@ async function forward(request: NextRequest, context: RouteContext) {
       cache: "no-store",
       redirect: "manual",
     });
+
+    if (!upstream.ok && upstream.status >= 502 && upstream.status <= 504) {
+      const contentType = upstream.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        return Response.json(
+          {
+            detail:
+              "The Render backend service is currently waking up from sleep. Please wait 15–30 seconds and click Try Again.",
+          },
+          { status: 503 },
+        );
+      }
+    }
+
     const responseHeaders = new Headers();
     for (const name of ["content-type", "content-disposition"]) {
       const value = upstream.headers.get(name);
@@ -48,9 +70,11 @@ async function forward(request: NextRequest, context: RouteContext) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown connection error";
-    console.error("JobConnect API proxy request failed:", message);
+    console.error(`JobConnect API proxy request to ${target} failed:`, message);
     return Response.json(
-      { detail: "Could not connect to the JobConnect API." },
+      {
+        detail: `Could not connect to the JobConnect API at ${baseUrl}. It may be starting up or the URL is incorrect. (${message})`,
+      },
       { status: 502 },
     );
   }
