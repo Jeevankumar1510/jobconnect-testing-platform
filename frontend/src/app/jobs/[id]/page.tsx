@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowUpRight, Building2, Check, Clock3, ExternalLink, FileTe
 import { useEffect, useState } from "react";
 
 import { ApiError, applyToJob, request } from "@/lib/api";
+import { getDirectJobApplyUrl } from "@/lib/urls";
 import { useAuth } from "@/components/auth-provider";
 import type { Job } from "@/lib/types";
 
@@ -138,14 +139,14 @@ export default function JobDetailsPage() {
             <span><WalletCards size={15} />{formatSalary(job)}</span>
           </div>
 
-          {job.is_external && job.external_url && (
+          {job.is_external && (
             <div className="external-direct-card mt-4 mb-4">
               <div>
-                <strong>Syndicated Partner Posting</strong>
-                <p>This role was imported via {job.source || "our partner feed"}. You can apply directly through JobConnect below, or view the original employer page.</p>
+                <strong>Official Direct Job Posting</strong>
+                <p>This role is hosted on {job.source || "the employer's official portal"}. Click to view and apply directly to this exact position.</p>
               </div>
-              <a href={job.external_url} target="_blank" rel="noopener noreferrer" className="button button-outline">
-                Employer Page <ExternalLink size={14} />
+              <a href={getDirectJobApplyUrl(job)} target="_blank" rel="noopener noreferrer" className="button button-outline">
+                View Specific Opening <ExternalLink size={14} />
               </a>
             </div>
           )}
@@ -160,21 +161,21 @@ export default function JobDetailsPage() {
         </article>
 
         <aside className="apply-panel" id="apply">
-          {job.is_external && job.external_url && (
+          {job.is_external && (
             <div className="mb-4 pb-4 border-b border-stone-200">
               <span className="eyebrow eyebrow-light">DIRECT APPLICATION</span>
               <h2 className="text-xl font-bold mb-1">Apply on {job.source || "Official Portal"}</h2>
               <p className="text-xs text-stone-600 mb-3">
-                This authentic role is hosted by the hiring team via {job.source || "partner network"}. Click below to apply directly on their portal:
+                This opening is actively hiring. Click below to jump directly to this exact role on their career portal:
               </p>
               <a
-                href={job.external_url}
+                href={getDirectJobApplyUrl(job)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="button button-primary button-full flex items-center justify-center gap-2"
                 style={{ textDecoration: "none" }}
               >
-                Apply on {job.source || "Employer Site"} <ExternalLink size={16} />
+                Apply for this Specific Role <ExternalLink size={16} />
               </a>
               <div className="mt-4 pt-3 border-t border-stone-200">
                 <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Or Track via JobConnect</span>

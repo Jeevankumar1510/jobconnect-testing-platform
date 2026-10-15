@@ -25,6 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { QuickApplyModal } from "@/components/quick-apply-modal";
 import { ApiError, searchJobs, syncExternalJobs } from "@/lib/api";
+import { getDirectJobApplyUrl } from "@/lib/urls";
 import type { Job } from "@/lib/types";
 
 function formatSalary(job: Job) {
@@ -813,7 +814,11 @@ export default function Home() {
                   )}
                 </div>
 
-                <h3>{job.title}</h3>
+                <h3>
+                  <Link href={`/jobs/${job.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                    {job.title}
+                  </Link>
+                </h3>
                 <p className="company-name"><Building2 size={15} /> {job.company}</p>
                 <div className="job-card-meta">
                   <span><MapPin size={15} />{job.location}</span>
@@ -821,15 +826,15 @@ export default function Home() {
                 </div>
 
                 <div className="job-card-bottom">
-                  {job.is_external && job.external_url ? (
+                  {job.is_external ? (
                     <a
-                      href={job.external_url}
+                      href={getDirectJobApplyUrl(job)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="card-quick-apply-btn button button-primary flex items-center justify-center gap-1.5"
                       style={{ textDecoration: "none" }}
                     >
-                      Apply on {job.source || "Site"} <ExternalLink size={14} />
+                      Apply for this Role <ExternalLink size={14} />
                     </a>
                   ) : (
                     <button
