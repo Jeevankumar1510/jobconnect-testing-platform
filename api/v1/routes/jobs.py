@@ -117,7 +117,7 @@ def list_my_jobs(
 
 @router.post("/sync-external")
 def trigger_external_sync(
-    limit: int = Query(default=30, ge=5, le=100),
+    limit: int = Query(default=100, ge=5, le=200),
     purge_placeholders: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -147,7 +147,7 @@ def search_jobs(
     source: str | None = Query(default=None, max_length=50),
     auto_sync: bool = Query(default=True),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> JobPage:
     if salary_min is not None and salary_max is not None and salary_min > salary_max:
@@ -160,7 +160,7 @@ def search_jobs(
     total_external = db.scalar(select(func.count()).select_from(Job).where(Job.is_external == True)) or 0
     if total_external == 0 and auto_sync and not q and not location:
         try:
-            sync_external_postings(db, limit_per_source=25, purge_placeholders=True)
+            sync_external_postings(db, limit_per_source=50, purge_placeholders=True)
         except Exception:
             pass
 

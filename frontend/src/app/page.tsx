@@ -67,13 +67,17 @@ const STARTUP_COMPANIES = [
   "zepto", "meesho", "blinkit", "cred", "razorpay", "groww", "slice", "invideo", "jupiter",
   "postman", "jar", "urban company", "hasura", "plum", "khatabook", "clevertap", "ather",
   "apna", "browserstack", "swiggy", "zomato", "zerodha", "paytm", "physicswallah",
-  "unacademy", "classplus", "cult.fit"
+  "unacademy", "classplus", "cult.fit", "flipkart", "phonepe", "delhivery", "nykaa",
+  "cars24", "upstox", "coinswitch", "policybazaar", "shiprocket"
 ];
 
 const ENTERPRISE_COMPANIES = [
   "tcs", "tata consultancy", "infosys", "wipro", "capgemini", "persistent",
-  "thoughtworks", "accenture", "cisco", "dell", "amazon", "ltimindtree", "hcl", "cognizant"
+  "thoughtworks", "accenture", "cisco", "dell", "amazon", "ltimindtree", "hcl", "cognizant",
+  "tech mahindra", "oracle", "sap", "ibm", "zoho", "freshworks", "jio", "airtel",
+  "goldman sachs", "jpmorgan", "adobe", "intuit", "bosch", "tata elxsi", "kpit", "mphasis", "hexaware", "coforge", "happiest minds"
 ];
+
 
 function isStartup(job: Job): boolean {
   const comp = job.company.toLowerCase();
@@ -120,7 +124,7 @@ export default function Home() {
     ) => {
       setBusy(true);
       setError("");
-      const params = new URLSearchParams({ page: "1", page_size: "30" });
+      const params = new URLSearchParams({ page: "1", page_size: "100" });
       if (q.trim()) params.set("q", q.trim());
       if (place.trim()) params.set("location", place.trim());
       if (dom !== "all") params.set("domain", dom);
@@ -149,7 +153,7 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const params = new URLSearchParams({ page: "1", page_size: "30" });
+    const params = new URLSearchParams({ page: "1", page_size: "100" });
     void searchJobs(params)
       .then((page) => {
         setJobs(page.items);
@@ -169,7 +173,7 @@ export default function Home() {
     setSyncing(true);
     setSyncMessage("");
     try {
-      const res = await syncExternalJobs(30);
+      const res = await syncExternalJobs(100);
       setSyncMessage(`Synced ${res.imported} new verified India IT fresher postings!`);
       await loadJobs(search, location, domain, experienceLevel, employmentType, workMode, sourceFilter, salaryMin, companyType);
       setTimeout(() => setSyncMessage(""), 5000);
@@ -419,6 +423,14 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Zero Platform Fee & Scam-Free Trust Guarantee Banner */}
+        <div className="zero-fee-banner">
+          <div className="zero-fee-banner-icon">🛡️</div>
+          <div className="zero-fee-banner-content">
+            <strong>100% Free Application Guarantee:</strong> All job postings on JobConnect are actively hiring roles pointing directly to official employer career portals. We enforce a strict <strong>zero-fee policy</strong>—never pay any registration fee, platform fee, or training deposit to apply or interview.
+          </div>
+        </div>
+
         {/* Comprehensive India IT Fresher Filters Suite */}
         <div className="fresher-filters-container">
           {/* Experience & Company target pills */}
@@ -433,7 +445,14 @@ export default function Home() {
                 void loadJobs(search, location, domain, "all", employmentType, workMode, sourceFilter, salaryMin, "all");
               }}
             >
-              All Roles ({total})
+              🟢 Actively Hiring ({total})
+            </button>
+            <button
+              type="button"
+              className="filter-pill active"
+              title="All roles on JobConnect are 100% free with no platform or registration fees"
+            >
+              🛡️ Zero Fee Only
             </button>
             <button
               type="button"
@@ -754,9 +773,15 @@ export default function Home() {
                 </div>
 
                 <div className="job-badges-row">
+                  <span className="badge-actively-hiring">
+                    <span className="hiring-indicator-dot" /> Actively Hiring
+                  </span>
+                  <span className="badge-zero-fee">
+                    🛡️ Zero Fee
+                  </span>
                   {isStartup(job) ? (
                     <span className="badge-startup">
-                      🚀 Indian Startup
+                      🚀 Startup
                     </span>
                   ) : isEnterprise(job) ? (
                     <span className="badge-enterprise">
@@ -779,7 +804,7 @@ export default function Home() {
                   <span className="job-type">{job.employment_type.replace("_", " ")}</span>
                   {job.is_external ? (
                     <span className="partner-apply-badge">
-                      <ExternalLink size={11} /> {job.source || "Partner"}
+                      <ExternalLink size={11} /> Official Portal
                     </span>
                   ) : (
                     <span className="direct-apply-badge">
