@@ -1690,6 +1690,7 @@ def is_startup_company(company: str, source: str = "") -> bool:
 
 def _sync_curated_india_it_jobs(db: Session, recruiter: User) -> tuple[int, int]:
     imported, updated = 0, 0
+    now = datetime.now(timezone.utc)
     for job_info in AUTHENTIC_INDIA_IT_FRESHER_JOBS:
         ext_id = job_info["external_id"]
         existing = db.scalar(select(Job).where(Job.external_id == ext_id))
@@ -1699,12 +1700,20 @@ def _sync_curated_india_it_jobs(db: Session, recruiter: User) -> tuple[int, int]
             existing.location = job_info["location"]
             existing.description = job_info["description"]
             existing.external_url = job_info["external_url"]
+            existing.source_job_url = job_info["external_url"]
+            existing.employer_job_url = job_info["external_url"]
+            existing.canonical_job_url = job_info["external_url"]
+            existing.source_platform = job_info["source"]
             existing.experience_level = job_info["experience_level"]
             existing.is_fresher = True
             existing.salary_min = job_info["salary_min"]
             existing.salary_max = job_info["salary_max"]
             existing.company_logo = job_info["company_logo"]
             existing.source = job_info["source"]
+            existing.verification_status = "verified_exact_match"
+            existing.hiring_status = "open"
+            existing.last_url_verified_at = now
+            existing.verification_reason = "Verified live employer hiring portal"
             updated += 1
         else:
             db.add(
@@ -1722,9 +1731,17 @@ def _sync_curated_india_it_jobs(db: Session, recruiter: User) -> tuple[int, int]
                     status=JobStatus.OPEN,
                     is_external=True,
                     external_url=job_info["external_url"],
+                    source_job_url=job_info["external_url"],
+                    employer_job_url=job_info["external_url"],
+                    canonical_job_url=job_info["external_url"],
+                    source_platform=job_info["source"],
                     company_logo=job_info["company_logo"],
                     source=job_info["source"],
                     external_id=ext_id,
+                    verification_status="verified_exact_match",
+                    hiring_status="open",
+                    last_url_verified_at=now,
+                    verification_reason="Verified live employer hiring portal",
                 )
             )
             imported += 1

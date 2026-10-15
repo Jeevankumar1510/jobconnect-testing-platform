@@ -61,7 +61,20 @@ class Settings(BaseSettings):
         return secret
 
     @property
-    def database_url(self) -> URL:
+    def database_url(self) -> URL | str:
+        env_url = os.environ.get("DATABASE_URL")
+        if env_url:
+            return env_url
+
+        # Check if local postgres is actually reachable
+        if self.postgres_host in ("127.0.0.1", "localhost"):
+            try:
+                import socket
+                with socket.create_connection((self.postgres_host, self.postgres_port), timeout=0.5):
+                    pass
+            except (OSError, TimeoutError):
+                return "sqlite:///./jobconnect_local.db"
+
         return URL.create(
             drivername="postgresql+psycopg",
             username=self.postgres_user,

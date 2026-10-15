@@ -1,113 +1,77 @@
 import type { Job } from "@/lib/types";
 
 /**
- * Returns a direct, deep-linked URL to the specific job opening on the employer's official portal.
- * Prevents redirecting to a generic career homepage with hundreds of unrelated openings.
+ * Checks if a URL points to a generic homepage, root, or broad search page.
  */
-export function getDirectJobApplyUrl(job: Pick<Job, "company" | "title" | "external_url">): string {
-  if (!job.external_url) {
-    return `https://www.google.com/search?q=${encodeURIComponent(
-      `${job.company} ${job.title} job opening apply official career portal`,
-    )}`;
+export function isGenericOrInvalidUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return true;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed || trimmed === "#" || trimmed.startsWith("javascript:") || trimmed.startsWith("file:")) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    if (!path || path === "") return true;
+
+    // Check for obvious generic home/search paths
+    const genericPaths = [
+      "/careers",
+      "/careers/",
+      "/jobs",
+      "/jobs/",
+      "/en/careers",
+      "/in-en/careers",
+      "/search",
+      "/search-jobs",
+    ];
+    if (genericPaths.includes(path) && !parsed.search && !parsed.hash) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Returns the exact verified application destination URL for a job.
+ * Strictly adheres to project specification:
+ * 1. Verified application page for the exact vacancy
+ * 2. Verified official employer job posting for the exact vacancy
+ * 3. Exact job detail page on the original job source
+ * 
+ * NEVER returns:
+ * - A generic employer homepage
+ * - A job portal homepage
+ * - A guessed search URL
+ * 
+ * Returns null if no verified destination exists or apply is disabled.
+ */
+export function getDirectJobApplyUrl(job: Partial<Job>): string | null {
+  if (job.apply_disabled) {
+    return null;
   }
 
-  const url = job.external_url.trim();
-
-  // If already a specific direct job listing (contains a specific job ID, requisition, or slug)
-  if (
-    url.includes("/job/") ||
-    (url.includes("/jobs/") && /\d+/.test(url)) ||
-    url.includes("/viewjob") ||
-    url.includes("/requisition") ||
-    url.includes("greenhouse.io") ||
-    url.includes("lever.co") ||
-    url.includes("smartrecruiters.com") ||
-    url.includes("myworkdayjobs.com") ||
-    url.includes("remoteok.com/remote-jobs/") ||
-    url.includes("weworkremotely.com/remote-jobs/") ||
-    url.includes("jobicy.com/jobs/") ||
-    url.includes("remotive.com/remote-jobs/") ||
-    url.includes("arbeitnow.com/view/")
-  ) {
-    return url;
+  // If backend already resolved the validated destination
+  if (job.apply_destination_url && !isGenericOrInvalidUrl(job.apply_destination_url)) {
+    return job.apply_destination_url;
   }
 
-  const compLower = job.company.toLowerCase();
-  const cleanTitle = job.title.replace(/\([^)]*\)/g, "").trim();
+  // Fallback checks in priority order
+  const candidates = [
+    job.application_url,
+    job.employer_job_url,
+    job.source_job_url,
+    job.canonical_job_url,
+    job.external_url,
+  ];
 
-  // Employer-specific direct search portals that take the user directly to this specific opening
-  if (compLower.includes("infosys")) {
-    return `https://career.infosys.com/joblist?keyword=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("wipro")) {
-    return `https://careers.wipro.com/careers-home/jobs?keywords=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("flipkart")) {
-    return `https://www.flipkartcareers.com/#!/search-jobs?q=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("amazon")) {
-    return `https://www.amazon.jobs/en/search?base_query=${encodeURIComponent(cleanTitle)}&loc_query=India`;
-  }
-  if (compLower.includes("cognizant")) {
-    return `https://careers.cognizant.com/in/en/entry-level`;
-  }
-  if (compLower.includes("hcl")) {
-    return `https://www.hcltech.com/careers`;
-  }
-  if (compLower.includes("accenture")) {
-    return `https://www.accenture.com/in-en/careers/jobsearch?jk=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("tcs") || compLower.includes("tata consultancy")) {
-    return `https://www.tcs.com/careers/india/entry-level`;
-  }
-  if (compLower.includes("dell")) {
-    return `https://jobs.dell.com/en/search-jobs/${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("cisco")) {
-    return `https://jobs.cisco.com/jobs/SearchJobs/${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("ibm")) {
-    return `https://www.ibm.com/careers/search?q=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("oracle")) {
-    return `https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions?keyword=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("sap")) {
-    return `https://jobs.sap.com/search/?createNewAlert=false&q=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("thoughtworks")) {
-    return `https://www.thoughtworks.com/careers/jobs?q=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("persistent")) {
-    return `https://www.persistent.com/careers/`;
-  }
-  if (compLower.includes("ltimindtree")) {
-    return `https://www.ltimindtree.com/careers/`;
-  }
-  if (compLower.includes("tech mahindra")) {
-    return `https://careers.techmahindra.com/EarlyCareers.aspx`;
-  }
-  if (compLower.includes("capgemini")) {
-    return `https://www.capgemini.com/in-en/careers/`;
-  }
-  if (compLower.includes("adobe")) {
-    return `https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced/jobs?q=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("intuit")) {
-    return `https://jobs.intuit.com/search-jobs/${encodeURIComponent(cleanTitle)}/India`;
-  }
-  if (compLower.includes("goldman sachs")) {
-    return `https://www.goldmansachs.com/careers/students/`;
-  }
-  if (compLower.includes("jpmorgan")) {
-    return `https://careers.jpmorgan.com/global/en/home?keyword=${encodeURIComponent(cleanTitle)}`;
-  }
-  if (compLower.includes("zoho")) {
-    return `https://www.zoho.com/careers/`;
-  }
-  if (compLower.includes("mphasis")) {
-    return `https://careers.mphasis.com/`;
+  for (const candidate of candidates) {
+    if (candidate && !isGenericOrInvalidUrl(candidate)) {
+      return candidate.trim();
+    }
   }
 
-  return url;
+  return null;
 }

@@ -19,7 +19,7 @@ export function SiteHeader() {
     router.push("/");
   }
 
-  const dashboardLabel = user?.role === "recruiter" ? "Recruiter hub" : "My activity";
+  const dashboardLabel = user?.role === "recruiter" ? "Recruiter hub" : "Dashboard & Profile";
 
   return (
     <header className="site-header">

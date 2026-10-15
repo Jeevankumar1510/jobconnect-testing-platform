@@ -75,6 +75,7 @@ class UserFactory:
             return
 
         with SessionLocal() as db:
+            user_ids = db.scalars(select(User.id).where(User.email.in_(self.emails))).all()
             storage_keys = db.scalars(
                 select(Application.resume_storage_key)
                 .join(User, User.id == Application.candidate_id)
@@ -82,10 +83,16 @@ class UserFactory:
             ).all()
             resume_dir: Path = get_settings().resume_storage_dir
             for storage_key in storage_keys:
-                (resume_dir / storage_key).unlink(missing_ok=True)
+                if storage_key:
+                    (resume_dir / storage_key).unlink(missing_ok=True)
 
-            db.execute(delete(User).where(User.email.in_(self.emails)))
-            db.commit()
+            if user_ids:
+                from jobs.models import Job, SavedJob
+                db.execute(delete(Application).where(Application.candidate_id.in_(user_ids)))
+                db.execute(delete(SavedJob).where(SavedJob.user_id.in_(user_ids)))
+                db.execute(delete(Job).where(Job.recruiter_id.in_(user_ids)))
+                db.execute(delete(User).where(User.id.in_(user_ids)))
+                db.commit()
 
 
 def make_job_payload(**overrides: object) -> dict[str, object]:

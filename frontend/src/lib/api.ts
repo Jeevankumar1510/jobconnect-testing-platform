@@ -175,3 +175,128 @@ export async function applyToJob(
     body: formData,
   });
 }
+
+// Candidate Profile APIs
+export function getCandidateProfile(token: string): Promise<import("@/lib/types").CandidateProfile> {
+  return request("/auth/me/profile", { token });
+}
+
+export function updateCandidateProfile(
+  profileData: Partial<import("@/lib/types").CandidateProfile>,
+  token: string,
+): Promise<import("@/lib/types").CandidateProfile> {
+  return request("/auth/me/profile", {
+    token,
+    method: "PUT",
+    json: profileData,
+  });
+}
+
+export function deleteCandidateProfileField(
+  fieldName: string,
+  token: string,
+): Promise<import("@/lib/types").CandidateProfile> {
+  return request(`/auth/me/profile/${fieldName}`, {
+    token,
+    method: "DELETE",
+  });
+}
+
+// Saved Jobs APIs
+export function getSavedJobs(token: string): Promise<import("@/lib/types").SavedJob[]> {
+  return request("/jobs/saved", { token });
+}
+
+export function saveJob(
+  jobId: number,
+  notes?: string,
+  token?: string,
+): Promise<import("@/lib/types").SavedJob> {
+  return request(`/jobs/${jobId}/save`, {
+    token,
+    method: "POST",
+    json: notes ? { notes } : {},
+  });
+}
+
+export function removeSavedJob(jobId: number, token: string): Promise<void> {
+  return request(`/jobs/${jobId}/save`, {
+    token,
+    method: "DELETE",
+  });
+}
+
+// External Application Tracking
+export function trackExternalApplication(
+  data: {
+    job_id: number;
+    status?: import("@/lib/types").ApplicationStatus;
+    notes?: string;
+    applied_at?: string;
+  },
+  token: string,
+): Promise<Application> {
+  return request("/applications/track-external", {
+    token,
+    method: "POST",
+    json: data,
+  });
+}
+
+// Update Application Notes and Status
+export function updateApplicationNotesAndStatus(
+  applicationId: number,
+  data: {
+    status?: import("@/lib/types").ApplicationStatus;
+    notes?: string;
+  },
+  token: string,
+): Promise<Application> {
+  return request(`/applications/${applicationId}/status`, {
+    token,
+    method: "PATCH",
+    json: data,
+  });
+}
+
+// Recommendations
+export function getRecommendedJobs(
+  token: string,
+  limit = 10,
+): Promise<import("@/lib/types").JobRecommendation[]> {
+  return request(`/jobs/recommendations?limit=${limit}`, { token });
+}
+
+// Job Verification Trigger
+export function verifyJobPosting(
+  jobId: number,
+  token: string,
+): Promise<{ job_id: number; verification: Record<string, unknown> }> {
+  return request(`/jobs/${jobId}/verify`, {
+    token,
+    method: "POST",
+  });
+}
+
+// Notifications APIs
+export function getNotifications(token: string): Promise<import("@/lib/types").Notification[]> {
+  return request("/auth/me/notifications", { token });
+}
+
+export function markNotificationRead(
+  notificationId: number,
+  token: string,
+): Promise<import("@/lib/types").Notification> {
+  return request(`/auth/me/notifications/${notificationId}/read`, {
+    token,
+    method: "PATCH",
+  });
+}
+
+export function markAllNotificationsRead(token: string): Promise<{ status: string; marked_read: number }> {
+  return request("/auth/me/notifications/read-all", {
+    token,
+    method: "POST",
+  });
+}
+

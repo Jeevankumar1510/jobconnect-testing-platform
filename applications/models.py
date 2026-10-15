@@ -39,16 +39,19 @@ class Application(Base):
         Enum(
             ApplicationStatus,
             native_enum=False,
-            length=20,
+            length=50,
             values_callable=lambda enum_type: [item.value for item in enum_type],
         ),
         default=ApplicationStatus.SUBMITTED,
         nullable=False,
     )
-    cover_letter: Mapped[str | None] = mapped_column(Text)
-    resume_storage_key: Mapped[str] = mapped_column(String(41), unique=True)
-    resume_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    resume_content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resume_storage_key: Mapped[str | None] = mapped_column(String(41), unique=True, nullable=True)
+    resume_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resume_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_application_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

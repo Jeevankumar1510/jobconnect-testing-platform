@@ -20,13 +20,26 @@ import {
   WalletCards,
   X,
   Zap,
+  Bookmark,
+  BookmarkCheck,
+  ShieldCheck,
+  Compass,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { QuickApplyModal } from "@/components/quick-apply-modal";
-import { ApiError, searchJobs, syncExternalJobs } from "@/lib/api";
+import {
+  ApiError,
+  getRecommendedJobs,
+  getSavedJobs,
+  removeSavedJob,
+  saveJob,
+  searchJobs,
+  syncExternalJobs,
+} from "@/lib/api";
 import { getDirectJobApplyUrl } from "@/lib/urls";
-import type { Job } from "@/lib/types";
+import type { Job, JobRecommendation } from "@/lib/types";
 
 function formatSalary(job: Job) {
   const min = job.salary_min ? Number(job.salary_min) : null;
@@ -110,6 +123,48 @@ export default function Home() {
   const [syncMessage, setSyncMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  const { user, token } = useAuth();
+  const [savedJobIds, setSavedJobIds] = useState<Set<number>>(new Set());
+  const [recommendations, setRecommendations] = useState<JobRecommendation[]>([]);
+
+  useEffect(() => {
+    if (token && user?.role === "candidate") {
+      void getSavedJobs(token)
+        .then((list) => {
+          setSavedJobIds(new Set(list.map((s) => s.job_id)));
+        })
+        .catch(() => {});
+
+      void getRecommendedJobs(token, 3)
+        .then((recs) => {
+          setRecommendations(recs);
+        })
+        .catch(() => {});
+    } else {
+      setSavedJobIds(new Set());
+      setRecommendations([]);
+    }
+  }, [token, user]);
+
+  const handleToggleSave = async (jobId: number) => {
+    if (!token || user?.role !== "candidate") return;
+    try {
+      if (savedJobIds.has(jobId)) {
+        await removeSavedJob(jobId, token);
+        setSavedJobIds((prev) => {
+          const next = new Set(prev);
+          next.delete(jobId);
+          return next;
+        });
+      } else {
+        await saveJob(jobId, undefined, token);
+        setSavedJobIds((prev) => new Set(prev).add(jobId));
+      }
+    } catch (err) {
+      console.error("Failed to toggle save", err);
+    }
+  };
 
   const loadJobs = useCallback(
     async (
@@ -400,6 +455,50 @@ export default function Home() {
             Create your profile <ArrowUpRight size={17} />
           </Link>
         </div>
+
+        {/* Profile-Based AI Job Recommendations (Part 6 Requirement 19) */}
+        {recommendations.length > 0 && (
+          <div className="mb-6 p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-teal-200 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-teal-600 text-white rounded-lg"><Compass size={16} /></span>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">Recommended for You</h3>
+                  <p className="text-xs text-stone-500">Based on your saved candidate profile, skills, and preferences</p>
+                </div>
+              </div>
+              <Link href="/dashboard" className="text-xs font-semibold text-teal-700 hover:underline">
+                Update Profile →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {recommendations.map((rec) => (
+                <div key={rec.job.id} className="bg-white p-3.5 rounded-xl border border-teal-100 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-semibold text-stone-700">{rec.job.company}</span>
+                      <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                        {rec.match_score}% Match
+                      </span>
+                    </div>
+                    <Link href={`/jobs/${rec.job.id}`} className="font-bold text-stone-900 text-sm hover:text-teal-700 block mb-1">
+                      {rec.job.title}
+                    </Link>
+                    <p className="text-[11px] text-stone-500 line-clamp-2 mb-2">
+                      💡 {rec.explanation}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
+                    <span className="text-stone-500">{rec.job.location}</span>
+                    <Link href={`/jobs/${rec.job.id}`} className="text-teal-700 font-semibold hover:underline">
+                      Apply →
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="job-feed-meta">
           <div className="flex items-center gap-3">
@@ -764,9 +863,26 @@ export default function Home() {
                     </div>
                   )}
                   <div className="flex items-center gap-2">
+                    {user?.role === "candidate" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void handleToggleSave(job.id);
+                        }}
+                        className="p-1 text-stone-400 hover:text-teal-700 rounded-lg hover:bg-stone-100 transition-colors"
+                        title={savedJobIds.has(job.id) ? "Remove bookmark" : "Save job"}
+                      >
+                        {savedJobIds.has(job.id) ? (
+                          <BookmarkCheck size={16} className="text-teal-600" />
+                        ) : (
+                          <Bookmark size={16} />
+                        )}
+                      </button>
+                    )}
                     {job.is_external && (
                       <span className="badge-partner">
-                        {job.source || "Partner"}
+                        {job.source_platform || job.source || "Partner"}
                       </span>
                     )}
                     <span className="job-age">{timeAgo(job.created_at)}</span>
@@ -774,9 +890,32 @@ export default function Home() {
                 </div>
 
                 <div className="job-badges-row">
-                  <span className="badge-actively-hiring">
-                    <span className="hiring-indicator-dot" /> Actively Hiring
-                  </span>
+                  {/* Live Hiring Status */}
+                  {job.hiring_status === "open" ? (
+                    <span className="badge-status-open">
+                      <span className="hiring-indicator-dot" /> Open &amp; Hiring
+                    </span>
+                  ) : job.hiring_status === "temporarily_unavailable" ? (
+                    <span className="badge-status-temp">
+                      ⚠️ Temp Unavailable
+                    </span>
+                  ) : job.hiring_status === "closed" || job.hiring_status === "expired" ? (
+                    <span className="badge-status-closed">
+                      🔴 Closed
+                    </span>
+                  ) : (
+                    <span className="badge-status-unverified">
+                      ⚪ Unverified
+                    </span>
+                  )}
+
+                  {/* Verification Status */}
+                  {job.verification_status === "verified_exact_match" && (
+                    <span className="badge-verified-exact">
+                      <ShieldCheck size={10} /> Verified Match
+                    </span>
+                  )}
+
                   <span className="badge-zero-fee">
                     🛡️ Zero Fee
                   </span>
@@ -827,15 +966,30 @@ export default function Home() {
 
                 <div className="job-card-bottom">
                   {job.is_external ? (
-                    <a
-                      href={getDirectJobApplyUrl(job)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="card-quick-apply-btn button button-primary flex items-center justify-center gap-1.5"
-                      style={{ textDecoration: "none" }}
-                    >
-                      Apply for this Role <ExternalLink size={14} />
-                    </a>
+                    (() => {
+                      const directUrl = getDirectJobApplyUrl(job);
+                      if (job.apply_disabled || !directUrl) {
+                        return (
+                          <Link
+                            href={`/jobs/${job.id}`}
+                            className="card-quick-apply-btn button button-secondary text-xs flex items-center justify-center"
+                          >
+                            Verify Destination
+                          </Link>
+                        );
+                      }
+                      return (
+                        <a
+                          href={directUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="card-quick-apply-btn button button-primary flex items-center justify-center gap-1.5"
+                          style={{ textDecoration: "none" }}
+                        >
+                          Apply on Original Site <ExternalLink size={14} />
+                        </a>
+                      );
+                    })()
                   ) : (
                     <button
                       type="button"

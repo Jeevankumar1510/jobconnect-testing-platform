@@ -12,9 +12,12 @@ class ApplicationRead(BaseModel):
     job_id: int
     candidate_id: int
     status: ApplicationStatus
-    cover_letter: str | None
-    resume_filename: str
-    resume_content_type: str
+    cover_letter: str | None = None
+    resume_filename: str | None = None
+    resume_content_type: str | None = None
+    notes: str | None = None
+    external_application_url: str | None = None
+    applied_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     job_title: str | None = None
@@ -24,6 +27,14 @@ class ApplicationRead(BaseModel):
 
 class ApplicationStatusUpdate(BaseModel):
     status: ApplicationStatus
+    notes: str | None = None
+
+
+class ExternalApplicationTrack(BaseModel):
+    job_id: int
+    status: ApplicationStatus | None = None
+    notes: str | None = None
+    external_url: str | None = None
 
 
 class ApplicationPage(BaseModel):
@@ -32,3 +43,4 @@ class ApplicationPage(BaseModel):
     page: int
     page_size: int
     pages: int
+

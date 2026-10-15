@@ -27,10 +27,13 @@ from applications.resume_validator import (
     ALLOWED_RESUME_TYPES,
     read_and_validate_resume,
 )
+from datetime import datetime, timezone
+
 from applications.schemas import (
     ApplicationPage,
     ApplicationRead,
     ApplicationStatusUpdate,
+    ExternalApplicationTrack,
 )
 from config.database import get_db
 from config.settings import get_settings
@@ -40,21 +43,61 @@ from jobs.models import Job
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 ALLOWED_STATUS_TRANSITIONS = {
+    ApplicationStatus.INTERESTED: {
+        ApplicationStatus.READY_TO_APPLY,
+        ApplicationStatus.APPLIED,
+        ApplicationStatus.WITHDRAWN,
+    },
+    ApplicationStatus.READY_TO_APPLY: {
+        ApplicationStatus.APPLIED,
+        ApplicationStatus.WITHDRAWN,
+    },
     ApplicationStatus.SUBMITTED: {
         ApplicationStatus.REVIEWING,
-        ApplicationStatus.REJECTED,
-    },
-    ApplicationStatus.REVIEWING: {
+        ApplicationStatus.ASSESSMENT,
         ApplicationStatus.INTERVIEW,
         ApplicationStatus.REJECTED,
         ApplicationStatus.ACCEPTED,
+        ApplicationStatus.WITHDRAWN,
     },
-    ApplicationStatus.INTERVIEW: {
+    ApplicationStatus.APPLIED: {
+        ApplicationStatus.REVIEWING,
+        ApplicationStatus.ASSESSMENT,
+        ApplicationStatus.INTERVIEW,
+        ApplicationStatus.OFFER,
         ApplicationStatus.REJECTED,
         ApplicationStatus.ACCEPTED,
+        ApplicationStatus.WITHDRAWN,
+    },
+    ApplicationStatus.REVIEWING: {
+        ApplicationStatus.ASSESSMENT,
+        ApplicationStatus.INTERVIEW,
+        ApplicationStatus.OFFER,
+        ApplicationStatus.REJECTED,
+        ApplicationStatus.ACCEPTED,
+        ApplicationStatus.WITHDRAWN,
+    },
+    ApplicationStatus.ASSESSMENT: {
+        ApplicationStatus.INTERVIEW,
+        ApplicationStatus.OFFER,
+        ApplicationStatus.REJECTED,
+        ApplicationStatus.ACCEPTED,
+        ApplicationStatus.WITHDRAWN,
+    },
+    ApplicationStatus.INTERVIEW: {
+        ApplicationStatus.OFFER,
+        ApplicationStatus.REJECTED,
+        ApplicationStatus.ACCEPTED,
+        ApplicationStatus.WITHDRAWN,
+    },
+    ApplicationStatus.OFFER: {
+        ApplicationStatus.ACCEPTED,
+        ApplicationStatus.REJECTED,
+        ApplicationStatus.WITHDRAWN,
     },
     ApplicationStatus.REJECTED: set(),
     ApplicationStatus.ACCEPTED: set(),
+    ApplicationStatus.WITHDRAWN: set(),
 }
 
 
@@ -327,28 +370,97 @@ def get_application_details(
     return app_read
 
 
+@router.post("/track-external", response_model=ApplicationRead)
+def track_external_application(
+    track_data: ExternalApplicationTrack,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationRead:
+    require_role(current_user, UserRole.CANDIDATE)
+    job = db.get(Job, track_data.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    existing = db.scalar(
+        select(Application).where(
+            Application.job_id == job.id,
+            Application.candidate_id == current_user.id,
+        )
+    )
+    now = datetime.now(timezone.utc)
+    target_status = track_data.status or ApplicationStatus.APPLIED
+    if existing:
+        existing.status = target_status
+        existing.applied_at = now
+        if track_data.notes:
+            existing.notes = track_data.notes
+        if track_data.external_url:
+            existing.external_application_url = track_data.external_url
+        db.commit()
+        db.refresh(existing)
+        read = ApplicationRead.model_validate(existing)
+        read.job_title = job.title
+        read.company = job.company
+        read.external_url = job.external_url
+        return read
+
+    app = Application(
+        job_id=job.id,
+        candidate_id=current_user.id,
+        status=target_status,
+        notes=track_data.notes,
+        external_application_url=track_data.external_url or job.external_url,
+        applied_at=now,
+    )
+    db.add(app)
+    db.commit()
+    db.refresh(app)
+    read = ApplicationRead.model_validate(app)
+    read.job_title = job.title
+    read.company = job.company
+    read.external_url = job.external_url
+    return read
+
+
 @router.patch("/{application_id}/status", response_model=ApplicationRead)
 def update_application_status(
     application_id: int,
     status_update: ApplicationStatusUpdate,
-    recruiter: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Application:
-    require_role(recruiter, UserRole.RECRUITER)
+) -> ApplicationRead:
     application = get_application(application_id, db)
     job = get_application_job(application, db)
-    if job.recruiter_id != recruiter.id:
+
+    is_recruiter_owner = (user.role == UserRole.RECRUITER and job.recruiter_id == user.id)
+    is_candidate_owner = (user.role == UserRole.CANDIDATE and application.candidate_id == user.id)
+
+    if user.role == UserRole.CANDIDATE:
+        if not is_candidate_owner or status_update.status in {ApplicationStatus.REVIEWING, ApplicationStatus.ACCEPTED}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Candidates cannot advance application to reviewing or accepted status",
+            )
+    elif not is_recruiter_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update applications for your own jobs",
+            detail="You are not authorized to update this application",
         )
-    if status_update.status not in ALLOWED_STATUS_TRANSITIONS[application.status]:
+
+    if status_update.status not in ALLOWED_STATUS_TRANSITIONS.get(application.status, set()):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot change application status from {application.status.value} to {status_update.status.value}",
         )
 
     application.status = status_update.status
+    if status_update.notes is not None:
+        application.notes = status_update.notes
     db.commit()
     db.refresh(application)
-    return application
+    read = ApplicationRead.model_validate(application)
+    read.job_title = job.title
+    read.company = job.company
+    read.external_url = job.external_url
+    return read
+

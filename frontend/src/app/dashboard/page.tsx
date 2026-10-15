@@ -37,19 +37,31 @@ import {
 import type { Application, ApplicationStatus, Job, Page, User } from "@/lib/types";
 
 const transitions: Record<ApplicationStatus, ApplicationStatus[]> = {
+  interested: ["ready_to_apply", "applied", "withdrawn"],
+  ready_to_apply: ["applied", "withdrawn"],
   submitted: ["reviewing", "rejected"],
-  reviewing: ["interview", "rejected", "accepted"],
-  interview: ["rejected", "accepted"],
+  applied: ["reviewing", "assessment", "interview", "rejected", "withdrawn"],
+  reviewing: ["assessment", "interview", "rejected", "accepted"],
+  assessment: ["interview", "rejected", "withdrawn"],
+  interview: ["offer", "rejected", "accepted", "withdrawn"],
+  offer: ["accepted", "withdrawn"],
   rejected: [],
   accepted: [],
+  withdrawn: [],
 };
 
 const statusLabels: Record<ApplicationStatus, string> = {
+  interested: "Interested",
+  ready_to_apply: "Ready to Apply",
   submitted: "Submitted",
+  applied: "Applied",
   reviewing: "In Review",
+  assessment: "Assessment",
   interview: "Interviewing",
+  offer: "Offer Received",
   rejected: "Not Selected",
   accepted: "Offer Extended",
+  withdrawn: "Withdrawn",
 };
 
 export default function DashboardPage() {
@@ -86,42 +98,152 @@ function CandidateDashboard({
   user: User;
   refreshProfile: () => Promise<void>;
 }) {
+  const [activeTab, setActiveTab] = useState<"applications" | "saved" | "profile" | "notifications">("applications");
   const [applications, setApplications] = useState<Application[]>([]);
+  const [savedJobs, setSavedJobs] = useState<import("@/lib/types").SavedJob[]>([]);
+  const [profile, setProfile] = useState<import("@/lib/types").CandidateProfile | null>(null);
+  const [notifications, setNotifications] = useState<import("@/lib/types").Notification[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  // Resume states
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeMsg, setResumeMsg] = useState("");
   const [resumeError, setResumeError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    getMyApplications(token)
-      .then((page) => {
-        if (active) setApplications(page.items);
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setError(err instanceof ApiError ? err.message : "We couldn’t load your applications.");
-        }
-      })
-      .finally(() => {
-        if (active) setBusy(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [token]);
+  // Profile form state
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    full_name: "",
+    phone: "",
+    current_location: "",
+    preferred_locations: "",
+    preferred_job_titles: "",
+    technical_skills: "",
+    education: "",
+    experience_level: "fresher",
+    internship_experience: "",
+    projects: "",
+    certifications: "",
+    preferred_industries: "",
+    employment_type_preferences: "full_time",
+    work_mode_preferences: "remote",
+    expected_salary_min: "",
+    expected_salary_max: "",
+  });
 
-  function refresh() {
+  const loadData = async () => {
     setBusy(true);
     setError("");
-    void getMyApplications(token)
-      .then((page) => setApplications(page.items))
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "We couldn’t load your applications.");
-      })
-      .finally(() => setBusy(false));
-  }
+    try {
+      const [appData, savedData, profileData, notifData] = await Promise.allSettled([
+        getMyApplications(token),
+        import("@/lib/api").then((m) => m.getSavedJobs(token)),
+        import("@/lib/api").then((m) => m.getCandidateProfile(token)),
+        import("@/lib/api").then((m) => m.getNotifications(token)),
+      ]);
+
+      if (appData.status === "fulfilled") setApplications(appData.value.items);
+      if (savedData.status === "fulfilled") setSavedJobs(savedData.value);
+      if (notifData.status === "fulfilled") setNotifications(notifData.value);
+      if (profileData.status === "fulfilled" && profileData.value) {
+        const p = profileData.value;
+        setProfile(p);
+        setProfileForm({
+          full_name: p.full_name || "",
+          phone: p.phone || "",
+          current_location: p.current_location || "",
+          preferred_locations: p.preferred_locations || "",
+          preferred_job_titles: p.preferred_job_titles || "",
+          technical_skills: p.technical_skills || "",
+          education: p.education || "",
+          experience_level: p.experience_level || "fresher",
+          internship_experience: p.internship_experience || "",
+          projects: p.projects || "",
+          certifications: p.certifications || "",
+          preferred_industries: p.preferred_industries || "",
+          employment_type_preferences: p.employment_type_preferences || "full_time",
+          work_mode_preferences: p.work_mode_preferences || "remote",
+          expected_salary_min: p.expected_salary_min ? String(p.expected_salary_min) : "",
+          expected_salary_max: p.expected_salary_max ? String(p.expected_salary_max) : "",
+        });
+      }
+    } catch {
+      setError("Failed to load your candidate data.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, [token]);
+
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileLoading(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const { updateCandidateProfile } = await import("@/lib/api");
+      const updated = await updateCandidateProfile(
+        {
+          ...profileForm,
+          expected_salary_min: profileForm.expected_salary_min ? Number(profileForm.expected_salary_min) : null,
+          expected_salary_max: profileForm.expected_salary_max ? Number(profileForm.expected_salary_max) : null,
+        },
+        token,
+      );
+      setProfile(updated);
+      setSuccessMsg("Candidate profile saved successfully! Your preferences are now active across Job Connect.");
+      setTimeout(() => setSuccessMsg(""), 5000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update profile.");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleRemoveSaved = async (jobId: number) => {
+    try {
+      const { removeSavedJob } = await import("@/lib/api");
+      await removeSavedJob(jobId, token);
+      setSavedJobs((prev) => prev.filter((s) => s.job_id !== jobId));
+    } catch (err) {
+      console.error("Failed to remove saved job", err);
+    }
+  };
+
+  const handleUpdateApplicationStatus = async (appId: number, newStatus: ApplicationStatus, notes?: string) => {
+    try {
+      const { updateApplicationNotesAndStatus } = await import("@/lib/api");
+      const updated = await updateApplicationNotesAndStatus(appId, { status: newStatus, notes }, token);
+      setApplications((prev) => prev.map((a) => (a.id === appId ? updated : a)));
+    } catch (err) {
+      console.error("Failed to update status", err);
+    }
+  };
+
+  const handleMarkNotifRead = async (notifId: number) => {
+    try {
+      const { markNotificationRead } = await import("@/lib/api");
+      await markNotificationRead(notifId, token);
+      setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, is_read: true } : n)));
+    } catch (err) {
+      console.error("Failed to mark notification read", err);
+    }
+  };
+
+  const handleMarkAllNotifsRead = async () => {
+    try {
+      const { markAllNotificationsRead } = await import("@/lib/api");
+      await markAllNotificationsRead(token);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error("Failed to mark all read", err);
+    }
+  };
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -157,13 +279,15 @@ function CandidateDashboard({
     }
   }
 
+  const unreadNotifsCount = notifications.filter((n) => !n.is_read).length;
+
   return (
     <main className="dashboard-page">
       <div className="dashboard-welcome">
         <div>
           <div className="eyebrow eyebrow-light"><span className="online-dot" /> YOUR CANDIDATE SPACE</div>
           <h1>Good things are <span className="serif-accent">in motion.</span></h1>
-          <p>Welcome back, {email}. Keep track of your job applications and profile resume.</p>
+          <p>Welcome back, {profile?.full_name || email}. Track applications, manage your persistent profile, and monitor hiring updates.</p>
         </div>
         <Link href="/" className="button button-primary"><BriefcaseBusiness size={16} /> Explore opportunities</Link>
       </div>
@@ -171,192 +295,601 @@ function CandidateDashboard({
       <div className="dashboard-stats">
         <div className="stat-card">
           <span className="stat-icon lavender"><Send size={18} /></span>
-          <span className="stat-label">Applications sent</span>
+          <span className="stat-label">Applications tracked</span>
           <strong>{busy ? "—" : applications.length}</strong>
-          <small>Every application is tracked</small>
+          <small>Verified pipeline</small>
         </div>
         <div className="stat-card">
           <span className="stat-icon mint"><Check size={18} /></span>
-          <span className="stat-label">Active Conversations</span>
-          <strong>{busy ? "—" : applications.filter((item) => item.status === "reviewing" || item.status === "interview").length}</strong>
-          <small>In review or interview</small>
+          <span className="stat-label">Saved opportunities</span>
+          <strong>{busy ? "—" : savedJobs.length}</strong>
+          <small>Bookmarked listings</small>
         </div>
         <div className="stat-card">
           <span className="stat-icon peach"><Zap size={18} /></span>
-          <span className="stat-label">1-Click Apply Ready</span>
-          <strong className="stat-word">{user.has_saved_resume || user.resume_filename ? "Active" : "Upload"}</strong>
-          <small>{user.has_saved_resume || user.resume_filename ? "Instant apply enabled" : "Add resume below"}</small>
+          <span className="stat-label">Profile Completeness</span>
+          <strong className="stat-word">{profile ? `${profile.profile_completion_percentage}%` : "—"}</strong>
+          <small>{profile?.profile_completion_percentage === 100 ? "Fully completed" : "Add details to improve matching"}</small>
         </div>
       </div>
 
-      {/* Candidate Default Resume Section */}
-      <section className="dashboard-section resume-profile-card">
-        <div className="dashboard-section-heading">
-          <div>
-            <span className="eyebrow eyebrow-light">SPEED UP YOUR SEARCH</span>
-            <h2>My 1-Click Profile Resume</h2>
-            <p>Save your default resume to apply directly to any job with a single click.</p>
-          </div>
-        </div>
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-stone-200 mt-6 mb-6 gap-2">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === "applications"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-stone-500 hover:text-stone-800"
+          }`}
+          onClick={() => setActiveTab("applications")}
+        >
+          Application Tracker ({applications.length})
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === "saved"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-stone-500 hover:text-stone-800"
+          }`}
+          onClick={() => setActiveTab("saved")}
+        >
+          Saved Jobs ({savedJobs.length})
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === "profile"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-stone-500 hover:text-stone-800"
+          }`}
+          onClick={() => setActiveTab("profile")}
+        >
+          Candidate Profile &amp; Resume ({profile?.profile_completion_percentage || 0}%)
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "notifications"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-stone-500 hover:text-stone-800"
+          }`}
+          onClick={() => setActiveTab("notifications")}
+        >
+          Notifications
+          {unreadNotifsCount > 0 && (
+            <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              {unreadNotifsCount}
+            </span>
+          )}
+        </button>
+      </div>
 
-        {resumeMsg && <div className="alert alert-success">{resumeMsg}</div>}
-        {resumeError && <div className="alert alert-error">{resumeError}</div>}
+      {error && <div className="alert alert-error mb-4">{error}</div>}
+      {successMsg && <div className="alert alert-success mb-4">{successMsg}</div>}
 
-        {user.has_saved_resume || user.resume_filename ? (
-          <div className="active-resume-box">
-            <div className="active-resume-details">
-              <div className="active-resume-icon">
-                <FileText size={24} />
-              </div>
-              <div>
-                <strong>{user.resume_filename || "Saved Profile Resume"}</strong>
-                <span className="text-emerald-700 text-xs font-medium flex items-center gap-1 mt-0.5">
-                  <Check size={13} /> Active & Ready for 1-Click Apply on all job postings
-                </span>
-              </div>
+      {/* TAB 1: APPLICATION TRACKER */}
+      {activeTab === "applications" && (
+        <section className="dashboard-section">
+          <div className="dashboard-section-heading">
+            <div>
+              <span className="eyebrow eyebrow-light">PERSISTENT APPLICATION PIPELINE</span>
+              <h2>Tracked Applications</h2>
+              <p>Keep track of your direct and external applications across stages from Interested to Offer.</p>
             </div>
-            <div className="active-resume-actions">
-              <a
-                href="/api/backend/api/v1/auth/me/resume"
-                download={user.resume_filename || "resume.pdf"}
-                className="button button-outline button-small"
-              >
-                <Download size={14} /> Download
-              </a>
-              <label className="button button-secondary button-small cursor-pointer">
-                <UploadCloud size={14} />
-                {resumeUploading ? "Updating..." : "Replace File"}
-                <input
-                  type="file"
-                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="sr-only"
-                  onChange={handleResumeUpload}
-                  disabled={resumeUploading}
-                />
-              </label>
-              <button
-                type="button"
-                className="button button-ghost button-small text-rose-600"
-                onClick={handleResumeDelete}
-                disabled={resumeUploading}
-                title="Remove resume"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+            <button className="button button-secondary button-small" onClick={loadData}>
+              Refresh
+            </button>
           </div>
-        ) : (
-          <div className="empty-resume-box">
-            <div className="empty-resume-content">
-              <UploadCloud size={32} className="text-emerald-600" />
-              <div>
-                <strong>No default resume uploaded yet</strong>
-                <p>Upload a PDF or DOCX resume to unlock 1-click applications across all jobs.</p>
-              </div>
-            </div>
-            <label className="button button-primary cursor-pointer">
-              {resumeUploading ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" /> Uploading...
-                </>
-              ) : (
-                <>
-                  <UploadCloud size={15} /> Upload Default Resume
-                </>
-              )}
-              <input
-                type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="sr-only"
-                onChange={handleResumeUpload}
-                disabled={resumeUploading}
-              />
-            </label>
-          </div>
-        )}
-      </section>
-
-      {/* Applications list */}
-      <section className="dashboard-section">
-        <div className="dashboard-section-heading">
-          <div>
-            <span className="eyebrow eyebrow-light">YOUR JOURNEY</span>
-            <h2>My Submitted Applications</h2>
-          </div>
-          <button className="button button-secondary button-small" onClick={refresh}>
-            Refresh
-          </button>
-        </div>
-        {error && <div className="alert alert-error">{error}</div>}
-        {busy ? (
-          <div className="dashboard-empty"><div className="loader" />Loading your applications…</div>
-        ) : applications.length ? (
-          <div className="application-list">
-            {applications.map((application) => (
-              <div className="candidate-application" key={application.id}>
-                <div className="application-company-mark">
-                  {application.company ? application.company.slice(0, 1).toUpperCase() : String(application.job_id).padStart(2, "0")}
-                </div>
-                <div className="application-summary">
-                  <div className="flex items-center gap-2">
-                    <span className="eyebrow eyebrow-light">
-                      {application.company || `JOB #${application.job_id}`}
-                    </span>
-                    {application.external_url && (
-                      <span className="badge-partner text-xs">Partner Role</span>
+          {busy ? (
+            <div className="dashboard-empty"><div className="loader" />Loading applications…</div>
+          ) : applications.length ? (
+            <div className="application-list">
+              {applications.map((application) => (
+                <div className="candidate-application" key={application.id}>
+                  <div className="application-company-mark">
+                    {application.company ? application.company.slice(0, 1).toUpperCase() : String(application.job_id).padStart(2, "0")}
+                  </div>
+                  <div className="application-summary">
+                    <div className="flex items-center gap-2">
+                      <span className="eyebrow eyebrow-light">
+                        {application.company || `JOB #${application.job_id}`}
+                      </span>
+                      {application.external_application_url && (
+                        <span className="badge-partner text-xs">External Posting</span>
+                      )}
+                    </div>
+                    <h3>{application.job_title || `Application #${application.id}`}</h3>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500 mt-1">
+                      {application.resume_filename && (
+                        <span className="flex items-center gap-1">
+                          <FileText size={13} /> {application.resume_filename}
+                        </span>
+                      )}
+                      <span>
+                        Tracked: {new Date(application.applied_at || application.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {application.notes && (
+                      <div className="text-xs text-stone-600 bg-stone-50 border border-stone-200 rounded p-1.5 mt-2">
+                        <strong>Notes:</strong> {application.notes}
+                      </div>
+                    )}
+                    {application.external_application_url && (
+                      <div className="mt-2">
+                        <a
+                          href={application.external_application_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-link text-xs inline-flex items-center gap-1"
+                        >
+                          Original Posting Destination <ExternalLink size={12} />
+                        </a>
+                      </div>
                     )}
                   </div>
-                  <h3>{application.job_title || `Application #${application.id}`}</h3>
-                  <div className="flex items-center gap-3 text-xs text-stone-500 mt-1">
-                    <span className="flex items-center gap-1">
-                      <FileText size={13} /> {application.resume_filename}
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`status-pill status-${application.status}`}>
+                      {statusLabels[application.status] || application.status.replace(/_/g, " ")}
                     </span>
-                    <span>Applied {new Date(application.created_at).toLocaleDateString()}</span>
+                    {/* Status updater for candidate */}
+                    <select
+                      className="text-xs border border-stone-300 rounded px-2 py-1 bg-white text-stone-700"
+                      value={application.status}
+                      onChange={(e) => handleUpdateApplicationStatus(application.id, e.target.value as ApplicationStatus)}
+                    >
+                      <option value="interested">Interested</option>
+                      <option value="ready_to_apply">Ready to Apply</option>
+                      <option value="applied">Applied</option>
+                      <option value="assessment">Assessment</option>
+                      <option value="interview">Interviewing</option>
+                      <option value="offer">Offer Received</option>
+                      <option value="rejected">Not Selected</option>
+                      <option value="withdrawn">Withdrawn</option>
+                    </select>
                   </div>
-                  {application.external_url && (
-                    <div className="mt-2">
-                      <a
-                        href={application.external_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-link text-xs inline-flex items-center gap-1"
-                      >
-                        Visit Partner Career Page <ExternalLink size={12} />
-                      </a>
-                    </div>
-                  )}
+                  <Link
+                    className="card-arrow"
+                    href={`/jobs/${application.job_id}`}
+                    aria-label="View opportunity"
+                  >
+                    <ArrowUpRight size={18} />
+                  </Link>
                 </div>
-                <span className={`status-pill status-${application.status}`}>
-                  {statusLabels[application.status]}
-                </span>
-                <Link
-                  className="card-arrow"
-                  href={`/jobs/${application.job_id}`}
-                  aria-label="View opportunity"
-                >
-                  <ArrowUpRight size={18} />
-                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Send size={24} />
+              <h3>Your next step starts here</h3>
+              <p>You haven’t tracked any applications yet. Find matching roles and track your journey.</p>
+              <Link className="button button-primary" href="/">
+                Explore open roles <ArrowRight size={16} />
+              </Link>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB 2: SAVED JOBS */}
+      {activeTab === "saved" && (
+        <section className="dashboard-section">
+          <div className="dashboard-section-heading">
+            <div>
+              <span className="eyebrow eyebrow-light">SAVED OPPORTUNITIES</span>
+              <h2>Bookmarked Jobs</h2>
+              <p>Review jobs you’ve saved, with live updates on their current hiring and verification status.</p>
+            </div>
+            <button className="button button-secondary button-small" onClick={loadData}>
+              Refresh
+            </button>
+          </div>
+          {busy ? (
+            <div className="dashboard-empty"><div className="loader" />Loading saved jobs…</div>
+          ) : savedJobs.length ? (
+            <div className="grid gap-3">
+              {savedJobs.map((saved) => {
+                const job = saved.job;
+                return (
+                  <div key={saved.id} className="p-4 bg-white border border-stone-200 rounded-xl flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-stone-800 text-sm">
+                          {job?.company || "Company"}
+                        </span>
+                        {/* Live Hiring Status Badge */}
+                        {job?.hiring_status === "open" ? (
+                          <span className="badge-status-open">Open &amp; Hiring</span>
+                        ) : job?.hiring_status === "temporarily_unavailable" ? (
+                          <span className="badge-status-temp">⚠️ Temp Unavailable</span>
+                        ) : job?.hiring_status === "closed" ? (
+                          <span className="badge-status-closed">🔴 Closed</span>
+                        ) : (
+                          <span className="badge-status-unverified">⚪ Unverified</span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-stone-900 text-base mb-1">
+                        {job?.title || `Job #${saved.job_id}`}
+                      </h3>
+                      <div className="flex items-center gap-3 text-xs text-stone-500">
+                        {job?.location && <span><MapPin size={12} className="inline mr-0.5" />{job.location}</span>}
+                        <span>Saved on {new Date(saved.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/jobs/${saved.job_id}`} className="button button-secondary button-small">
+                        View Role <ArrowUpRight size={14} />
+                      </Link>
+                      <button
+                        type="button"
+                        className="button button-quiet button-small text-rose-600 hover:bg-rose-50"
+                        onClick={() => handleRemoveSaved(saved.job_id)}
+                        title="Remove from saved"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <BriefcaseBusiness size={24} />
+              <h3>No saved jobs yet</h3>
+              <p>Bookmark jobs you are interested in from the search page to track them here.</p>
+              <Link className="button button-primary" href="/">
+                Browse jobs <ArrowRight size={16} />
+              </Link>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB 3: CANDIDATE PROFILE & RESUME */}
+      {activeTab === "profile" && (
+        <section className="dashboard-section">
+          {/* Profile Completeness Card */}
+          <div className="bg-white border border-stone-200 rounded-xl p-5 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <strong className="text-base text-stone-900">Profile Completeness: {profile?.profile_completion_percentage || 0}%</strong>
+                <p className="text-xs text-stone-500">
+                  A complete profile unlocks high-accuracy job recommendations and tailored matches.
+                </p>
               </div>
-            ))}
+            </div>
+            <div className="profile-progress-bar-bg mt-2">
+              <div
+                className="profile-progress-bar-fill"
+                style={{ width: `${profile?.profile_completion_percentage || 0}%` }}
+              />
+            </div>
           </div>
-        ) : (
-          <div className="empty-state">
-            <Send size={24} />
-            <h3>Your next step starts here</h3>
-            <p>You haven’t applied to a role yet. Explore hundreds of direct and partner postings.</p>
-            <Link className="button button-primary" href="/">
-              Explore open roles <ArrowRight size={16} />
-            </Link>
+
+          {/* Profile Edit Form */}
+          <form className="bg-white border border-stone-200 rounded-xl p-6" onSubmit={handleProfileSave}>
+            <div className="mb-4">
+              <h2 className="text-lg font-bold text-stone-900">Personal &amp; Contact Details</h2>
+              <p className="text-xs text-stone-500">Information remains persistent across all your sessions.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <label className="text-xs font-semibold text-stone-700">
+                Full Name
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.full_name}
+                  onChange={(e) => setProfileForm({ ...profileForm, full_name: e.target.value })}
+                  placeholder="e.g. Rahul Sharma"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Phone Number
+                <input
+                  type="tel"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  placeholder="e.g. +91 98765 43210"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Current Location
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.current_location}
+                  onChange={(e) => setProfileForm({ ...profileForm, current_location: e.target.value })}
+                  placeholder="e.g. Bengaluru, Karnataka"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Preferred Work Locations
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.preferred_locations}
+                  onChange={(e) => setProfileForm({ ...profileForm, preferred_locations: e.target.value })}
+                  placeholder="e.g. Bengaluru, Hyderabad, Remote"
+                />
+              </label>
+            </div>
+
+            <div className="mb-4 pt-4 border-t border-stone-200">
+              <h2 className="text-lg font-bold text-stone-900">Technical Skills &amp; Experience</h2>
+              <p className="text-xs text-stone-500">Skills are used to match live job requirements.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <label className="text-xs font-semibold text-stone-700 form-full">
+                Technical Skills (Comma-separated)
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.technical_skills}
+                  onChange={(e) => setProfileForm({ ...profileForm, technical_skills: e.target.value })}
+                  placeholder="e.g. Python, SQL, React, FastAPI, AWS, Docker"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Preferred Job Titles
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.preferred_job_titles}
+                  onChange={(e) => setProfileForm({ ...profileForm, preferred_job_titles: e.target.value })}
+                  placeholder="e.g. Python Developer, Full Stack Engineer"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Experience Level
+                <select
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm bg-white"
+                  value={profileForm.experience_level}
+                  onChange={(e) => setProfileForm({ ...profileForm, experience_level: e.target.value })}
+                >
+                  <option value="fresher">🌱 Fresher / Entry Level (0-1 yr)</option>
+                  <option value="junior">⚡ Junior Developer (1-2 yrs)</option>
+                  <option value="mid">🚀 Mid-Level (2+ yrs)</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Work Mode Preference
+                <select
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm bg-white"
+                  value={profileForm.work_mode_preferences}
+                  onChange={(e) => setProfileForm({ ...profileForm, work_mode_preferences: e.target.value })}
+                >
+                  <option value="remote">Remote</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="onsite">On-site</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Employment Type Preference
+                <select
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm bg-white"
+                  value={profileForm.employment_type_preferences}
+                  onChange={(e) => setProfileForm({ ...profileForm, employment_type_preferences: e.target.value })}
+                >
+                  <option value="full_time">Full-time</option>
+                  <option value="internship">Internship</option>
+                  <option value="contract">Contract</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mb-4 pt-4 border-t border-stone-200">
+              <h2 className="text-lg font-bold text-stone-900">Education, Projects &amp; Certifications</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <label className="text-xs font-semibold text-stone-700 form-full">
+                Education
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.education}
+                  onChange={(e) => setProfileForm({ ...profileForm, education: e.target.value })}
+                  placeholder="e.g. B.Tech Computer Science, Anna University (2024)"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700 form-full">
+                Key Projects
+                <textarea
+                  rows={2}
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.projects}
+                  onChange={(e) => setProfileForm({ ...profileForm, projects: e.target.value })}
+                  placeholder="e.g. Job Search Engine with FastAPI, E-Commerce React App"
+                />
+              </label>
+              <label className="text-xs font-semibold text-stone-700 form-full">
+                Certifications &amp; Internships
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 border border-stone-300 rounded-lg text-sm"
+                  value={profileForm.certifications}
+                  onChange={(e) => setProfileForm({ ...profileForm, certifications: e.target.value })}
+                  placeholder="e.g. AWS Certified Cloud Practitioner, Python Institute PCAP"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-stone-200">
+              <button
+                type="submit"
+                className="button button-primary"
+                disabled={profileLoading}
+              >
+                {profileLoading ? "Saving Profile…" : "Save Candidate Profile"} <Check size={16} />
+              </button>
+            </div>
+          </form>
+
+          {/* Candidate Default Resume Section */}
+          <div className="resume-profile-card mt-6">
+            <div className="dashboard-section-heading">
+              <div>
+                <span className="eyebrow eyebrow-light">SPEED UP YOUR SEARCH</span>
+                <h2>My 1-Click Profile Resume</h2>
+                <p>Save your default resume to apply directly to any job with a single click.</p>
+              </div>
+            </div>
+
+            {resumeMsg && <div className="alert alert-success">{resumeMsg}</div>}
+            {resumeError && <div className="alert alert-error">{resumeError}</div>}
+
+            {user.has_saved_resume || user.resume_filename ? (
+              <div className="active-resume-box">
+                <div className="active-resume-details">
+                  <div className="active-resume-icon">
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <strong>{user.resume_filename || "Saved Profile Resume"}</strong>
+                    <span className="text-emerald-700 text-xs font-medium flex items-center gap-1 mt-0.5">
+                      <Check size={13} /> Active &amp; Ready for 1-Click Apply on all job postings
+                    </span>
+                  </div>
+                </div>
+                <div className="active-resume-actions">
+                  <a
+                    href="/api/backend/api/v1/auth/me/resume"
+                    download={user.resume_filename || "resume.pdf"}
+                    className="button button-outline button-small"
+                  >
+                    <Download size={14} /> Download
+                  </a>
+                  <label className="button button-secondary button-small cursor-pointer">
+                    <UploadCloud size={14} />
+                    {resumeUploading ? "Updating..." : "Replace File"}
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="sr-only"
+                      onChange={handleResumeUpload}
+                      disabled={resumeUploading}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="button button-ghost button-small text-rose-600"
+                    onClick={handleResumeDelete}
+                    disabled={resumeUploading}
+                    title="Remove resume"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-resume-box">
+                <div className="empty-resume-content">
+                  <UploadCloud size={32} className="text-emerald-600" />
+                  <div>
+                    <strong>No default resume uploaded yet</strong>
+                    <p>Upload a PDF or DOCX resume to unlock 1-click applications across all jobs.</p>
+                  </div>
+                </div>
+                <label className="button button-primary cursor-pointer">
+                  {resumeUploading ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={15} /> Upload Default Resume
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="sr-only"
+                    onChange={handleResumeUpload}
+                    disabled={resumeUploading}
+                  />
+                </label>
+              </div>
+            )}
           </div>
-        )}
-      </section>
-      <div className="dashboard-tip">
+        </section>
+      )}
+
+      {/* TAB 4: NOTIFICATIONS & HIRING UPDATES */}
+      {activeTab === "notifications" && (
+        <section className="dashboard-section">
+          <div className="dashboard-section-heading">
+            <div>
+              <span className="eyebrow eyebrow-light">LIVE HIRING UPDATES</span>
+              <h2>Notifications &amp; Changes</h2>
+              <p>Stay informed when saved jobs close, reopen, or when verified new openings match your profile.</p>
+            </div>
+            {notifications.length > 0 && (
+              <button
+                type="button"
+                className="button button-secondary button-small"
+                onClick={handleMarkAllNotifsRead}
+              >
+                Mark all as read
+              </button>
+            )}
+          </div>
+          {busy ? (
+            <div className="dashboard-empty"><div className="loader" />Loading notifications…</div>
+          ) : notifications.length ? (
+            <div className="grid gap-3">
+              {notifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  className={`notification-card ${!notif.is_read ? "unread" : ""}`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-stone-900 text-sm">{notif.title}</span>
+                      <span className="text-[11px] text-stone-400">
+                        {new Date(notif.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-600 mb-2">{notif.message}</p>
+                    <div className="flex items-center gap-2">
+                      {notif.job_id && (
+                        <Link href={`/jobs/${notif.job_id}`} className="text-link text-xs">
+                          View Job →
+                        </Link>
+                      )}
+                      {!notif.is_read && (
+                        <button
+                          type="button"
+                          className="text-xs text-stone-400 hover:text-stone-700"
+                          onClick={() => handleMarkNotifRead(notif.id)}
+                        >
+                          Mark read
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Check size={24} />
+              <h3>All caught up</h3>
+              <p>No new notifications at this time. We will alert you whenever your saved jobs change status.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="dashboard-tip mt-8">
         <span>✳</span>
-        <p><strong>A little reminder:</strong> Every application is a step toward a place where you can do your best work.</p>
+        <p><strong>JobConnect Commitment:</strong> Real openings, direct original posting redirection, and verified hiring status without platform fees.</p>
       </div>
     </main>
   );
 }
+
 
 function RecruiterDashboard({ token, email }: { token: string; email: string }) {
   const [jobsPage, setJobsPage] = useState<Page<Job> | null>(null);
@@ -564,7 +1097,7 @@ function ApplicantRow({ application, token, onUpdate }: { application: Applicati
       const objectUrl = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = application.resume_filename;
+      anchor.download = application.resume_filename || "resume.pdf";
       anchor.click();
       URL.revokeObjectURL(objectUrl);
     } catch (err) {

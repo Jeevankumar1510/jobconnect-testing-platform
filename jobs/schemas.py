@@ -82,8 +82,24 @@ class JobRead(BaseModel):
     external_url: str | None = None
     company_logo: str | None = None
     source: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    source_job_url: str | None = None
+    employer_job_url: str | None = None
+    application_url: str | None = None
+    source_listing_url: str | None = None
+    source_platform: str | None = None
+    employer_website: str | None = None
+    canonical_job_url: str | None = None
+    last_url_verified_at: datetime | None = None
+    verification_status: str = "unverified"
+    hiring_status: str = "open"
+    verification_reason: str | None = None
+    apply_destination_url: str | None = None
+    apply_destination_type: str | None = None
+    is_destination_verified: bool = False
+    apply_warning: str | None = None
+    apply_disabled: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class JobPage(BaseModel):
@@ -92,3 +108,26 @@ class JobPage(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class SaveJobCreate(BaseModel):
+    notes: str | None = None
+
+
+class SavedJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    job_id: int
+    notes: str | None = None
+    created_at: datetime
+    job: JobRead | None = None
+
+
+class JobRecommendationRead(BaseModel):
+    job: JobRead
+    match_score: int
+    match_reasons: list[str]
+    explanation: str
+

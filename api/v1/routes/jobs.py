@@ -4,22 +4,33 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from accounts.dependencies import get_current_user
-from accounts.models import User, UserRole
+from accounts.models import CandidateProfile, Notification, User, UserRole
 from applications.models import Application
 from config.database import get_db
 from config.settings import get_settings
 from jobs.enums import EmploymentType, JobStatus
-from jobs.models import Job
-from jobs.schemas import JobCreate, JobPage, JobRead, JobUpdate
+from jobs.models import Job, JobVerificationHistory, SavedJob
+from jobs.schemas import (
+    JobCreate,
+    JobPage,
+    JobRead,
+    JobRecommendationRead,
+    JobUpdate,
+    SaveJobCreate,
+    SavedJobRead,
+)
 from jobs.services.external_jobs import (
     is_india_location,
     is_it_tech_job,
     sync_external_postings,
 )
+from jobs.services.job_verifier import verify_active_jobs_batch, verify_single_job_posting
+from jobs.services.recommendation_engine import get_profile_recommendations
+from jobs.services.url_resolver import enrich_job_destination_metadata
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -107,7 +118,7 @@ def list_my_jobs(
         .limit(page_size)
     ).all()
     return JobPage(
-        items=items,
+        items=[enrich_job_destination_metadata(j) for j in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -316,7 +327,7 @@ def search_jobs(
         .limit(page_size)
     ).all()
     return JobPage(
-        items=items,
+        items=[enrich_job_destination_metadata(j) for j in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -358,6 +369,58 @@ def cron_sync_jobs(
     }
 
 
+@router.get("/saved", response_model=list[SavedJobRead])
+def get_my_saved_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[SavedJob]:
+    saved_records = db.scalars(
+        select(SavedJob)
+        .where(SavedJob.user_id == current_user.id)
+        .order_by(SavedJob.created_at.desc())
+    ).all()
+    for s in saved_records:
+        job = db.get(Job, s.job_id)
+        if job:
+            s.job = enrich_job_destination_metadata(job)
+    return saved_records
+
+
+@router.get("/recommendations", response_model=list[JobRecommendationRead])
+def get_recommended_jobs(
+    limit: int = Query(default=15, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[JobRecommendationRead]:
+    profile = db.scalar(
+        select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
+    )
+    if not profile:
+        profile = CandidateProfile(user_id=current_user.id, experience_level="fresher")
+    raw_recs = get_profile_recommendations(profile, db, limit=limit)
+    results = []
+    for r in raw_recs:
+        j = enrich_job_destination_metadata(r["job"])
+        results.append(
+            JobRecommendationRead(
+                job=j,
+                match_score=r["match_score"],
+                match_reasons=r["match_reasons"],
+                explanation=r["explanation"],
+            )
+        )
+    return results
+
+
+@router.post("/verify-batch")
+def trigger_batch_verification(
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    stats = verify_active_jobs_batch(db, limit=limit)
+    return {"status": "success", "stats": stats}
+
+
 @router.get("/{job_id}", response_model=JobRead)
 def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
     job = db.get(Job, job_id)
@@ -366,7 +429,69 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
         )
-    return job
+    return enrich_job_destination_metadata(job)
+
+
+@router.post("/{job_id}/save", response_model=SavedJobRead)
+def save_job(
+    job_id: int,
+    payload: SaveJobCreate | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SavedJob:
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    existing = db.scalar(
+        select(SavedJob).where(SavedJob.user_id == current_user.id, SavedJob.job_id == job_id)
+    )
+    if existing:
+        if payload and payload.notes is not None:
+            existing.notes = payload.notes
+            db.commit()
+            db.refresh(existing)
+        existing.job = enrich_job_destination_metadata(job)
+        return existing
+
+    saved = SavedJob(
+        user_id=current_user.id,
+        job_id=job.id,
+        notes=payload.notes if payload else None,
+    )
+    db.add(saved)
+    db.commit()
+    db.refresh(saved)
+    saved.job = enrich_job_destination_metadata(job)
+    return saved
+
+
+@router.delete("/{job_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+def remove_saved_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    saved = db.scalar(
+        select(SavedJob).where(SavedJob.user_id == current_user.id, SavedJob.job_id == job_id)
+    )
+    if saved:
+        db.delete(saved)
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{job_id}/verify", response_model=JobRead)
+def verify_job_destination(
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> Job:
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    verify_single_job_posting(job, db)
+    return enrich_job_destination_metadata(job)
+
 
 
 @router.patch("/{job_id}", response_model=JobRead)
@@ -411,10 +536,14 @@ def delete_job(
     resume_storage_keys = db.scalars(
         select(Application.resume_storage_key).where(Application.job_id == job.id)
     ).all()
+    db.execute(delete(Application).where(Application.job_id == job.id))
+    db.execute(delete(SavedJob).where(SavedJob.job_id == job.id))
+    db.execute(delete(JobVerificationHistory).where(JobVerificationHistory.job_id == job.id))
     db.delete(job)
     db.commit()
     resume_dir = get_settings().resume_storage_dir
     for storage_key in resume_storage_keys:
-        (resume_dir / storage_key).unlink(missing_ok=True)
+        if storage_key:
+            (resume_dir / storage_key).unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
