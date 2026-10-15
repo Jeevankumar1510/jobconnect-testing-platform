@@ -49,10 +49,10 @@ export function getDirectJobApplyUrl(job: Pick<Job, "company" | "title" | "exter
     return `https://www.amazon.jobs/en/search?base_query=${encodeURIComponent(cleanTitle)}&loc_query=India`;
   }
   if (compLower.includes("cognizant")) {
-    return `https://careers.cognizant.com/in/en/search-results?keywords=${encodeURIComponent(cleanTitle)}`;
+    return `https://careers.cognizant.com/in/en/entry-level`;
   }
   if (compLower.includes("hcl")) {
-    return `https://www.hcltech.com/careers/search?keyword=${encodeURIComponent(cleanTitle)}`;
+    return `https://www.hcltech.com/careers`;
   }
   if (compLower.includes("accenture")) {
     return `https://www.accenture.com/in-en/careers/jobsearch?jk=${encodeURIComponent(cleanTitle)}`;
@@ -79,16 +79,16 @@ export function getDirectJobApplyUrl(job: Pick<Job, "company" | "title" | "exter
     return `https://www.thoughtworks.com/careers/jobs?q=${encodeURIComponent(cleanTitle)}`;
   }
   if (compLower.includes("persistent")) {
-    return `https://careers.persistent.com/search/?q=${encodeURIComponent(cleanTitle)}`;
+    return `https://www.persistent.com/careers/`;
   }
   if (compLower.includes("ltimindtree")) {
-    return `https://careers.ltimindtree.com/search/?q=${encodeURIComponent(cleanTitle)}`;
+    return `https://www.ltimindtree.com/careers/`;
   }
   if (compLower.includes("tech mahindra")) {
-    return `https://careers.techmahindra.com/SearchJob.aspx?keyword=${encodeURIComponent(cleanTitle)}`;
+    return `https://careers.techmahindra.com/EarlyCareers.aspx`;
   }
   if (compLower.includes("capgemini")) {
-    return `https://www.capgemini.com/in-en/careers/job-search/?search=${encodeURIComponent(cleanTitle)}`;
+    return `https://www.capgemini.com/in-en/careers/`;
   }
   if (compLower.includes("adobe")) {
     return `https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced/jobs?q=${encodeURIComponent(cleanTitle)}`;
@@ -97,13 +97,16 @@ export function getDirectJobApplyUrl(job: Pick<Job, "company" | "title" | "exter
     return `https://jobs.intuit.com/search-jobs/${encodeURIComponent(cleanTitle)}/India`;
   }
   if (compLower.includes("goldman sachs")) {
-    return `https://www.goldmansachs.com/careers/students/programs/india/`;
+    return `https://www.goldmansachs.com/careers/students/`;
   }
   if (compLower.includes("jpmorgan")) {
     return `https://careers.jpmorgan.com/global/en/home?keyword=${encodeURIComponent(cleanTitle)}`;
   }
   if (compLower.includes("zoho")) {
-    return `https://www.zoho.com/careers/job-openings.html`;
+    return `https://www.zoho.com/careers/`;
+  }
+  if (compLower.includes("mphasis")) {
+    return `https://careers.mphasis.com/`;
   }
 
   return url;

@@ -682,7 +682,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("450000"),
         "salary_max": Decimal("650000"),
         "source": "Accenture Careers",
-        "external_url": "https://www.accenture.com/in-en/careers/local/entry-level",
+        "external_url": "https://www.accenture.com/in-en/careers/jobsearch",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/c/cd/Accenture.svg",
     },
     {
@@ -766,7 +766,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("400000"),
         "salary_max": Decimal("650000"),
         "source": "HCLTech Careers",
-        "external_url": "https://www.hcltech.com/careers/early-careers",
+        "external_url": "https://www.hcltech.com/careers",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/9/95/HCL_Technologies_logo.svg",
     },
     {
@@ -878,7 +878,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1000000"),
         "salary_max": Decimal("1800000"),
         "source": "InVideo Careers",
-        "external_url": "https://invideo.io/about/careers/",
+        "external_url": "https://invideo.io/",
         "company_logo": "https://invideo.io/assets/images/invideo-logo.svg",
     },
     {
@@ -920,7 +920,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("700000"),
         "salary_max": Decimal("1100000"),
         "source": "Urban Company Careers",
-        "external_url": "https://www.urbancompany.com/careers",
+        "external_url": "https://careers.urbancompany.com/",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/b/b8/Urban_Company_logo.png",
     },
     {
@@ -962,7 +962,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("800000"),
         "salary_max": Decimal("1400000"),
         "source": "Khatabook Careers",
-        "external_url": "https://khatabook.com/careers/",
+        "external_url": "https://khatabook.freshteam.com/jobs",
         "company_logo": "https://khatabook.com/favicon.ico",
     },
     {
@@ -1032,7 +1032,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("600000"),
         "salary_max": Decimal("1000000"),
         "source": "PhysicsWallah Careers",
-        "external_url": "https://pw.live/careers",
+        "external_url": "https://www.pw.live/",
         "company_logo": "https://www.pw.live/favicon.ico",
     },
     {
@@ -1131,7 +1131,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1500000"),
         "salary_max": Decimal("2400000"),
         "source": "CRED Careers",
-        "external_url": "https://cred.club/careers",
+        "external_url": "https://careers.cred.club/",
         "company_logo": "https://web-images.credcdn.in/_next/assets/images/home-page/cred-logo.png",
     },
     {
@@ -1271,7 +1271,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("750000"),
         "salary_max": Decimal("1300000"),
         "source": "CoinSwitch Careers",
-        "external_url": "https://coinswitch.co/careers/",
+        "external_url": "https://coinswitch.co/",
         "company_logo": "https://coinswitch.co/favicon.ico",
     },
     {
@@ -1285,7 +1285,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("400000"),
         "salary_max": Decimal("750000"),
         "source": "HCLTech Careers",
-        "external_url": "https://www.hcltech.com/careers/freshers",
+        "external_url": "https://www.hcltech.com/careers",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/9/95/HCL_Technologies_logo.svg",
     },
     {
@@ -1313,7 +1313,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("380000"),
         "salary_max": Decimal("650000"),
         "source": "Tech Mahindra Careers",
-        "external_url": "https://careers.techmahindra.com/",
+        "external_url": "https://careers.techmahindra.com/EarlyCareers.aspx",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/0/07/Tech_Mahindra_New_Logo.svg",
     },
     {
@@ -1383,7 +1383,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("425000"),
         "salary_max": Decimal("750000"),
         "source": "Capgemini Careers",
-        "external_url": "https://www.capgemini.com/in-en/careers/freshers/",
+        "external_url": "https://www.capgemini.com/in-en/careers/",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/0/00/Capgemini_Logo.svg",
     },
     {
@@ -1523,7 +1523,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1400000"),
         "salary_max": Decimal("2400000"),
         "source": "Goldman Sachs",
-        "external_url": "https://www.goldmansachs.com/careers/students/programs/india/",
+        "external_url": "https://www.goldmansachs.com/careers/students/",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/6/61/Goldman_Sachs.svg",
     },
     {
@@ -1621,7 +1621,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("400000"),
         "salary_max": Decimal("650000"),
         "source": "Mphasis Careers",
-        "external_url": "https://www.mphasis.com/home/corporate/careers.html",
+        "external_url": "https://careers.mphasis.com/",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/7/7b/Mphasis_logo.svg",
     },
     {
