@@ -94,7 +94,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "service": "JobConnect API",
+        "docs": "/docs",
+        "health": "/api/v1/health",
+        "admin": "/admin/",
+    }
+
 app.include_router(health_router, prefix="/api/v1")
+
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(applications_router, prefix="/api/v1")
