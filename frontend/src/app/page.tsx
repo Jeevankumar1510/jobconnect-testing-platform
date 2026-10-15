@@ -844,12 +844,14 @@ export default function Home() {
           </div>
         ) : jobs.length ? (
           <div className="job-grid">
-            {jobs.map((job, index) => (
-              <article
-                className="job-card"
-                key={job.id}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
+            {jobs
+              .filter((job) => !job.is_external || (!job.apply_disabled && (job.apply_destination_url || getDirectJobApplyUrl(job))))
+              .map((job, index) => (
+                <article
+                  className="job-card"
+                  key={job.id}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
                 <div className="job-card-top">
                   {job.company_logo ? (
                     <img
@@ -969,14 +971,7 @@ export default function Home() {
                     (() => {
                       const directUrl = getDirectJobApplyUrl(job);
                       if (job.apply_disabled || !directUrl) {
-                        return (
-                          <Link
-                            href={`/jobs/${job.id}`}
-                            className="card-quick-apply-btn button button-secondary text-xs flex items-center justify-center"
-                          >
-                            Verify Destination
-                          </Link>
-                        );
+                        return null;
                       }
                       return (
                         <a
@@ -986,7 +981,7 @@ export default function Home() {
                           className="card-quick-apply-btn button button-primary flex items-center justify-center gap-1.5"
                           style={{ textDecoration: "none" }}
                         >
-                          Apply on Original Site <ExternalLink size={14} />
+                          Apply on Company Portal <ExternalLink size={14} />
                         </a>
                       );
                     })()

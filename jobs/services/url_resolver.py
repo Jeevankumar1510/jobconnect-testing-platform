@@ -16,11 +16,17 @@ GENERIC_HOMEPAGES_AND_SEARCH_PATTERNS = [
     r"^https?://(www\.)?monster\.[a-z.]+(/?$)",
     r"^https?://(www\.)?foundit\.[a-z.]+(/?$)",
     r"^https?://(www\.)?google\.[a-z.]+/search",
-    r"^https?://careers\.techmahindra\.com/searchjob\.aspx",
-    r"^https?://www\.capgemini\.com/[^/]+/careers/job-search/\?search=",
-    r"^https?://www\.hcltech\.com/careers/search\?keyword=",
-    r"^https?://www\.zoho\.com/careers/job-openings\.html",
 ]
+
+OFFICIAL_ATS_AND_PORTAL_DOMAINS = {
+    "greenhouse.io",
+    "lever.co",
+    "ashbyhq.com",
+    "smartrecruiters.com",
+    "workday.com",
+    "myworkdayjobs.com",
+    "freshteam.com",
+}
 
 
 @dataclass
@@ -94,6 +100,24 @@ def is_safe_external_url(url: str | None) -> tuple[bool, str]:
     return True, "URL is safe"
 
 
+def is_company_career_portal(url: str) -> bool:
+    """Returns True if the URL points to a company's official career portal or ATS vacancy."""
+    try:
+        parsed = urllib.parse.urlparse(url.lower().strip())
+        host = parsed.hostname or ""
+        path = parsed.path.rstrip("/")
+        if any(host == ats or host.endswith("." + ats) for ats in OFFICIAL_ATS_AND_PORTAL_DOMAINS):
+            return True
+        if host.startswith("careers.") or host.startswith("career.") or host.startswith("jobs.") or host.startswith("job-openings."):
+            return True
+        career_keywords = ["/careers", "/jobs", "/entry-level", "/early-careers", "/campus", "/jobdesc", "/openings", "/students"]
+        if any(keyword in path for keyword in career_keywords):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def is_generic_homepage_or_search(url: str) -> bool:
     """Checks whether the URL is merely a generic job board homepage or broad search page."""
     u_lower = url.lower().strip()
@@ -103,8 +127,16 @@ def is_generic_homepage_or_search(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(u_lower)
         path = parsed.path.rstrip("/")
-        if path in {"", "/careers", "/jobs", "/en/careers", "/in-en/careers", "/search", "/search-jobs", "/earlycareers"} and not parsed.query:
-            return True
+        host = parsed.hostname or ""
+
+        # Check if hosted on a recognized ATS (e.g. boards.greenhouse.io/postman, jobs.lever.co/zepto)
+        is_ats = any(host == ats or host.endswith("." + ats) for ats in OFFICIAL_ATS_AND_PORTAL_DOMAINS)
+
+        # Generic paths without specific job ID, deep vacancy path, or hash/query
+        generic_paths = {"", "/", "/careers", "/jobs", "/en/careers", "/in-en/careers", "/search", "/search-jobs", "/find-jobs"}
+        if path in generic_paths and not parsed.query and not parsed.fragment:
+            if not (is_ats and path not in {"", "/"}):
+                return True
     except Exception:
         pass
     return False

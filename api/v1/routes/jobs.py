@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -26,11 +27,12 @@ from jobs.schemas import (
 from jobs.services.external_jobs import (
     is_india_location,
     is_it_tech_job,
+    purge_jobs_without_verified_direct_links,
     sync_external_postings,
 )
 from jobs.services.job_verifier import verify_active_jobs_batch, verify_single_job_posting
 from jobs.services.recommendation_engine import get_profile_recommendations
-from jobs.services.url_resolver import enrich_job_destination_metadata
+from jobs.services.url_resolver import enrich_job_destination_metadata, resolve_job_application_destination
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -318,20 +320,30 @@ def search_jobs(
         else:
             filters.append(Job.source.ilike(f"%{source}%"))
 
-    total = db.scalar(select(func.count()).select_from(Job).where(*filters)) or 0
-    items = db.scalars(
+    raw_items = db.scalars(
         select(Job)
         .where(*filters)
         .order_by(Job.created_at.desc(), Job.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
     ).all()
+
+    valid_items = []
+    for j in raw_items:
+        ej = enrich_job_destination_metadata(j)
+        # Strictly remove / exclude jobs if link is not available
+        if ej.is_external and (ej.apply_disabled or not ej.apply_destination_url):
+            continue
+        valid_items.append(ej)
+
+    total = len(valid_items)
+    start_idx = (page - 1) * page_size
+    page_items = valid_items[start_idx : start_idx + page_size]
+
     return JobPage(
-        items=[enrich_job_destination_metadata(j) for j in items],
+        items=page_items,
         total=total,
         page=page,
         page_size=page_size,
-        pages=ceil(total / page_size),
+        pages=ceil(total / page_size) if total else 1,
     )
 
 
@@ -401,6 +413,9 @@ def get_recommended_jobs(
     results = []
     for r in raw_recs:
         j = enrich_job_destination_metadata(r["job"])
+        # Strictly remove / exclude recommendations if link is not available
+        if j.is_external and (j.apply_disabled or not j.apply_destination_url):
+            continue
         results.append(
             JobRecommendationRead(
                 job=j,
@@ -430,6 +445,27 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
             detail="Job not found",
         )
     return enrich_job_destination_metadata(job)
+
+
+@router.get("/{job_id}/apply-redirect", name="apply_redirect_to_company_portal")
+def apply_redirect_to_company_portal(job_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    """
+    Directly redirects the candidate to the original job posting on the employer's official career portal.
+    If the link is unavailable, returns a 404 rather than silently redirecting to a generic page.
+    """
+    job = db.get(Job, job_id)
+    if job is None or job.status != JobStatus.OPEN:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found or no longer open",
+        )
+    dest = resolve_job_application_destination(job)
+    if not dest.url or dest.destination_type == "unavailable":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application link unavailable. We could not verify the original posting for this job.",
+        )
+    return RedirectResponse(url=dest.url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.post("/{job_id}/save", response_model=SavedJobRead)

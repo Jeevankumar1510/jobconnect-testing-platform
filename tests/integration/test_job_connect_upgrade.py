@@ -413,3 +413,64 @@ def test_19_profile_based_recommendation_scoring():
     match_score, reasons, explanation = calculate_job_match(job, profile)
     assert match_score >= 40
     assert any("python" in r.lower() for r in reasons)
+
+
+# 20. Remove jobs if link not available
+def test_20_remove_jobs_if_link_not_available(api_client: ApiClient, candidate: dict, recruiter: dict):
+    from jobs.services.external_jobs import purge_jobs_without_verified_direct_links
+
+    with SessionLocal() as db:
+        # Create an external job with no link
+        dead_job = Job(
+            recruiter_id=recruiter["id"],
+            title="Dead Link Developer",
+            company="Ghost Corp",
+            location="Bengaluru",
+            description="Testing dead link job removal functionality.",
+            employment_type="full_time",
+            is_external=True,
+            status=JobStatus.OPEN,
+            external_url=None,
+            source_job_url=None,
+            employer_job_url=None,
+            application_url=None,
+        )
+        db.add(dead_job)
+        db.commit()
+        dead_job_id = dead_job.id
+
+    # 1. search_jobs should NOT return the job because link is unavailable
+    resp = api_client.get("/api/v1/jobs")
+    assert resp.status_code == 200
+    returned_ids = [j["id"] for j in resp.json()["items"]]
+    assert dead_job_id not in returned_ids
+
+    # 2. purge_jobs_without_verified_direct_links should remove it from the DB
+    with SessionLocal() as db:
+        purged = purge_jobs_without_verified_direct_links(db)
+        assert purged >= 1
+        assert db.get(Job, dead_job_id) is None
+
+
+# 21. Redirect to original company career portal
+def test_21_apply_redirect_to_company_career_portal(api_client: ApiClient, recruiter: dict):
+    with SessionLocal() as db:
+        job = Job(
+            recruiter_id=recruiter["id"],
+            title="Associate Telecom Software Engineer",
+            company="Tech Mahindra",
+            location="Pune",
+            description="Tech Mahindra early careers fresher software development opportunity.",
+            employment_type="full_time",
+            employer_job_url="https://careers.techmahindra.com/EarlyCareers.aspx",
+            is_external=True,
+            status=JobStatus.OPEN,
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    # Test apply redirect endpoint (allow_redirects=False to verify 307 redirect)
+    resp = api_client.get(f"/api/v1/jobs/{job_id}/apply-redirect", allow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "https://careers.techmahindra.com/EarlyCareers.aspx"

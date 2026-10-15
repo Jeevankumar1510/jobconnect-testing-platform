@@ -12,8 +12,14 @@ from sqlalchemy.orm import Session
 
 from accounts.models import User, UserRole
 from accounts.security import hash_password
+from applications.models import Application
 from jobs.enums import EmploymentType, JobStatus
-from jobs.models import Job
+from jobs.models import Job, JobVerificationHistory, SavedJob
+from jobs.services.url_resolver import (
+    is_generic_homepage_or_search,
+    is_safe_external_url,
+    resolve_job_application_destination,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -459,6 +465,31 @@ def purge_non_it_and_non_india_jobs(db: Session) -> int:
     return purged_count
 
 
+def purge_jobs_without_verified_direct_links(db: Session) -> int:
+    """
+    Strictly removes / purges any jobs from the database whose direct application/posting link
+    is not available, empty, invalid, or generic.
+    Ensures candidates never encounter dead or unverified links on JobConnect.
+    """
+    all_jobs = db.scalars(select(Job).order_by(Job.id.desc())).all()
+    purged_count = 0
+    for job in all_jobs:
+        if not job.is_external:
+            continue
+        dest = resolve_job_application_destination(job)
+        if not dest.url or dest.destination_type == "unavailable":
+            db.execute(delete(Application).where(Application.job_id == job.id))
+            db.execute(delete(SavedJob).where(SavedJob.job_id == job.id))
+            db.execute(delete(JobVerificationHistory).where(JobVerificationHistory.job_id == job.id))
+            db.delete(job)
+            purged_count += 1
+
+    if purged_count > 0:
+        db.commit()
+        logger.info("Purged %d jobs with unavailable or invalid links.", purged_count)
+    return purged_count
+
+
 # Curated Authentic India IT Fresher Postings from Top Tech Employers & Unicorns
 AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
     {
@@ -878,7 +909,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1000000"),
         "salary_max": Decimal("1800000"),
         "source": "InVideo Careers",
-        "external_url": "https://invideo.io/",
+        "external_url": "https://invideo.io/careers#open-positions",
         "company_logo": "https://invideo.io/assets/images/invideo-logo.svg",
     },
     {
@@ -1032,7 +1063,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("600000"),
         "salary_max": Decimal("1000000"),
         "source": "PhysicsWallah Careers",
-        "external_url": "https://www.pw.live/",
+        "external_url": "https://www.pw.live/careers#open-roles",
         "company_logo": "https://www.pw.live/favicon.ico",
     },
     {
@@ -1075,7 +1106,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1400000"),
         "salary_max": Decimal("2200000"),
         "source": "Flipkart Careers",
-        "external_url": "https://www.flipkartcareers.com/",
+        "external_url": "https://www.flipkartcareers.com/#!/campus",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/7/7a/Flipkart_logo.svg",
     },
     {
@@ -1089,7 +1120,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("1300000"),
         "salary_max": Decimal("2000000"),
         "source": "Flipkart Careers",
-        "external_url": "https://www.flipkartcareers.com/",
+        "external_url": "https://www.flipkartcareers.com/#!/joblist",
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/7/7a/Flipkart_logo.svg",
     },
     {
@@ -1271,7 +1302,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "salary_min": Decimal("750000"),
         "salary_max": Decimal("1300000"),
         "source": "CoinSwitch Careers",
-        "external_url": "https://coinswitch.co/",
+        "external_url": "https://coinswitch.co/careers#open-positions",
         "company_logo": "https://coinswitch.co/favicon.ico",
     },
     {
@@ -2216,6 +2247,9 @@ def sync_external_postings(
     """Sync authentic India IT fresher/junior/internship job postings."""
     if purge_placeholders:
         purge_non_it_and_non_india_jobs(db)
+
+    # Always purge jobs where direct link is not available
+    purge_jobs_without_verified_direct_links(db)
 
     recruiter = get_or_create_system_recruiter(db)
     sources_stats: dict[str, dict[str, int]] = {}

@@ -372,7 +372,7 @@ export default function JobDetailsPage() {
               ) : (
                 <div className="mt-3">
                   <p className="text-xs text-stone-600 mb-3">
-                    Click below to open the exact <strong>{job.title}</strong> vacancy on the employer or original source website:
+                    Click below to open the exact <strong>{job.title}</strong> vacancy directly on the employer&apos;s official careers portal:
                   </p>
                   <a
                     href={resolvedApplyUrl}
@@ -382,10 +382,10 @@ export default function JobDetailsPage() {
                     style={{ textDecoration: "none" }}
                     onClick={() => setShowExternalPrompt(true)}
                   >
-                    Apply on Original Website <ExternalLink size={16} />
+                    Apply on Company Career Portal <ExternalLink size={16} />
                   </a>
                   <p className="text-[11px] text-stone-500 mt-2 text-center">
-                    ↗ You are leaving JobConnect to apply directly with the employer.
+                    ↗ Opens the official {job.company} career portal in a new tab.
                   </p>
                 </div>
               )}
