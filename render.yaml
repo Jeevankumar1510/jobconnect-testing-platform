@@ -13,7 +13,7 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: /bin/sh -c 'python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && python manage.py sync_jobs --limit 30 && exec uvicorn api.main:app --host 0.0.0.0 --port "$PORT"'
+    dockerCommand: ./start.sh
     healthCheckPath: /api/v1/health
     envVars:
       - key: DATABASE_URL

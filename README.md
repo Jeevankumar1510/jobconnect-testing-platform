@@ -130,10 +130,7 @@ If you prefer deploying services manually without Blueprints:
 - Click **New +** > **Web Service**.
 - Select your repository.
 - Runtime: **Docker**, Dockerfile Path: `./Dockerfile`, Context: `.`.
-- Docker Command:
-  ```bash
-  /bin/sh -c 'python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py bootstrap_admin && python manage.py sync_jobs --limit 30 && exec uvicorn api.main:app --host 0.0.0.0 --port "$PORT"'
-  ```
+- Docker Command: Leave blank (or enter `./start.sh`)
 - Environment Variables:
   - `DATABASE_URL`: (Paste Render internal database URL or Neon/Supabase PostgreSQL URL)
   - `JWT_SECRET_KEY`: (Click Generate)
