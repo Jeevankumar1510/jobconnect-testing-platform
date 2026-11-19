@@ -4,6 +4,7 @@ import logging
 import re
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -1390,7 +1391,7 @@ AUTHENTIC_INDIA_IT_FRESHER_JOBS: list[dict[str, Any]] = [
         "company_logo": "https://upload.wikimedia.org/wikipedia/commons/a/ae/Thoughtworks_Logo.svg",
     },
     {
-        "external_id": "curated_accenture_ase_fresher",
+        "external_id": "curated_accenture_ase_2026",
         "title": "Associate Software Engineer (ASE Fresher Hiring 2024-2026)",
         "company": "Accenture India",
         "location": "Bengaluru / Hyderabad / Pune / Chennai / Gurgaon",
@@ -1722,8 +1723,12 @@ def is_startup_company(company: str, source: str = "") -> bool:
 def _sync_curated_india_it_jobs(db: Session, recruiter: User) -> tuple[int, int]:
     imported, updated = 0, 0
     now = datetime.now(timezone.utc)
+    seen_ids: set[str] = set()
     for job_info in AUTHENTIC_INDIA_IT_FRESHER_JOBS:
         ext_id = job_info["external_id"]
+        if ext_id in seen_ids:
+            continue
+        seen_ids.add(ext_id)
         existing = db.scalar(select(Job).where(Job.external_id == ext_id))
         if existing:
             existing.title = job_info["title"]
