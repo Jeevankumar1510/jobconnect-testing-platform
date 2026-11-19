@@ -12,15 +12,9 @@ class PortalUserAdmin(admin.ModelAdmin):
     readonly_fields = ("id", "email", "role", "created_at")
 
     def has_add_permission(self, _request: HttpRequest) -> bool:
-        del _request
         return False
 
-    def has_delete_permission(
-        self,
-        _request: HttpRequest,
-        _obj: PortalUser | None = None,
-    ) -> bool:
-        del _request, _obj
+    def has_delete_permission(self, _request: HttpRequest, _obj: PortalUser | None = None) -> bool:
         return False
 
 
@@ -38,8 +32,19 @@ class JobPostingAdmin(admin.ModelAdmin):
         "status",
         "created_at",
     )
-    list_filter = ("status", "is_external", "source", "employment_type", "location")
-    search_fields = ("title", "company", "location", "description")
+    list_filter = (
+        "status",
+        "is_external",
+        "source",
+        "employment_type",
+        "location",
+    )
+    search_fields = (
+        "title",
+        "company",
+        "location",
+        "description",
+    )
     readonly_fields = ("id", "created_at", "updated_at")
 
 
@@ -55,26 +60,13 @@ class JobApplicationAdmin(admin.ModelAdmin):
     )
     list_filter = ("status",)
     search_fields = ("resume_filename", "cover_letter")
-    readonly_fields = tuple(
-        field.name for field in JobApplication._meta.fields
-    )
+    readonly_fields = tuple(field.name for field in JobApplication._meta.fields)
 
     def has_add_permission(self, _request: HttpRequest) -> bool:
-        del _request
         return False
 
-    def has_change_permission(
-        self,
-        _request: HttpRequest,
-        _obj: JobApplication | None = None,
-    ) -> bool:
-        del _request, _obj
+    def has_change_permission(self, _request: HttpRequest, _obj: JobApplication | None = None) -> bool:
         return False
 
-    def has_delete_permission(
-        self,
-        _request: HttpRequest,
-        _obj: JobApplication | None = None,
-    ) -> bool:
-        del _request, _obj
+    def has_delete_permission(self, _request: HttpRequest, _obj: JobApplication | None = None) -> bool:
         return False

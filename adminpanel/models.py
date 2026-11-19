@@ -27,18 +27,8 @@ class JobPosting(models.Model):
     location = models.CharField(max_length=150)
     description = models.TextField()
     employment_type = models.CharField(max_length=20)
-    salary_min = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        null=True,
-        blank=True,
-    )
-    salary_max = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        null=True,
-        blank=True,
-    )
+    salary_min = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    salary_max = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20)
     is_external = models.BooleanField(default=False)
     external_url = models.CharField(max_length=500, null=True, blank=True)
@@ -64,10 +54,10 @@ class JobApplication(models.Model):
     candidate_id = models.IntegerField()
     status = models.CharField(max_length=20)
     cover_letter = models.TextField(null=True, blank=True)
-    resume_filename = models.CharField(max_length=255)
-    resume_content_type = models.CharField(max_length=100)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    resume_filename = models.CharField(max_length=255, null=True, blank=True)
+    resume_content_type = models.CharField(max_length=100, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = False

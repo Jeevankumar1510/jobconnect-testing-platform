@@ -10,10 +10,23 @@ from starlette.staticfiles import StaticFiles
 
 from accounts.models import CandidateProfile, Notification, User
 from adminpanel.asgi import application as django_application
+from ai.models import (
+    ChatMessage,
+    Interview,
+    MockInterviewExchange,
+    MockInterviewSession,
+    ResumeAnalysis,
+    SkillRoadmap,
+)
+from api.v1.routes.admin_analytics import router as admin_analytics_router
+from api.v1.routes.ai import router as ai_router
 from api.v1.routes.applications import router as applications_router
 from api.v1.routes.auth import router as auth_router
 from api.v1.routes.health import router as health_router
+from api.v1.routes.interviews import router as interviews_router
 from api.v1.routes.jobs import router as jobs_router
+from resume_studio.routes import router as resume_studio_router
+import resume_studio.models
 from config.database import Base, SessionLocal, engine
 from jobs.models import Job, JobVerificationHistory, SavedJob
 from jobs.services.external_jobs import sync_external_postings
@@ -163,6 +176,10 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(applications_router, prefix="/api/v1")
+app.include_router(ai_router, prefix="/api/v1")
+app.include_router(interviews_router, prefix="/api/v1")
+app.include_router(admin_analytics_router, prefix="/api/v1")
+app.include_router(resume_studio_router, prefix="/api/v1")
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).resolve().parent.parent / "staticfiles", check_dir=False),

@@ -44,6 +44,41 @@ export function SiteHeader() {
           >
             Find a job
           </Link>
+          <Link
+            className={pathname === "/resume-analyzer" ? "nav-link active" : "nav-link"}
+            href="/resume-analyzer"
+            onClick={() => setMenuOpen(false)}
+          >
+            Resume Analyzer
+          </Link>
+          <Link
+            className={pathname?.startsWith("/resume-studio") ? "nav-link active" : "nav-link"}
+            href="/resume-studio"
+            onClick={() => setMenuOpen(false)}
+          >
+            AI Resume Studio
+          </Link>
+          <Link
+            className={pathname === "/skill-gap" ? "nav-link active" : "nav-link"}
+            href="/skill-gap"
+            onClick={() => setMenuOpen(false)}
+          >
+            Skill Gap
+          </Link>
+          <Link
+            className={pathname === "/interview-prep" ? "nav-link active" : "nav-link"}
+            href="/interview-prep"
+            onClick={() => setMenuOpen(false)}
+          >
+            Interview Prep
+          </Link>
+          <Link
+            className={pathname === "/assistant" ? "nav-link active" : "nav-link"}
+            href="/assistant"
+            onClick={() => setMenuOpen(false)}
+          >
+            AI Assistant
+          </Link>
           {user && (
             <Link
               className={pathname === "/dashboard" ? "nav-link active" : "nav-link"}

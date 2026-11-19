@@ -12,7 +12,7 @@ ALLOWED_RESUME_TYPES = {
 }
 
 
-async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]:
+def read_and_validate_resume_sync(resume: UploadFile) -> tuple[bytes, str, str]:
     filename = Path(resume.filename or "").name
     extension = Path(filename).suffix.lower()
     content_type = ALLOWED_RESUME_TYPES.get(extension)
@@ -23,7 +23,10 @@ async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]
         )
 
     max_size = get_settings().max_resume_size_bytes
-    content = await resume.read(max_size + 1)
+    if hasattr(resume, "file") and hasattr(resume.file, "read"):
+        content = resume.file.read(max_size + 1)
+    else:
+        content = resume.read(max_size + 1)
     if len(content) > max_size:
         limit_mib = max_size / (1024 * 1024)
         raise HTTPException(
@@ -53,4 +56,9 @@ async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="File content does not match a valid PDF or DOCX resume",
         )
+
     return content, filename[:255], content_type
+
+
+async def read_and_validate_resume(resume: UploadFile) -> tuple[bytes, str, str]:
+    return read_and_validate_resume_sync(resume)

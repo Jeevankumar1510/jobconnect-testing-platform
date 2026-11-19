@@ -36,3 +36,23 @@ def get_current_user(
     if user is None:
         raise unauthorized
     return user
+
+
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if credentials is None:
+        return None
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            get_settings().jwt_secret_key.get_secret_value(),
+            algorithms=["HS256"],
+        )
+        user_id = int(payload["sub"])
+    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError):
+        return None
+
+    return db.get(User, user_id)

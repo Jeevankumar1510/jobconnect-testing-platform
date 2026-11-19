@@ -129,22 +129,21 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<JobRecommendation[]>([]);
 
   useEffect(() => {
-    if (token && user?.role === "candidate") {
-      void getSavedJobs(token)
-        .then((list) => {
-          setSavedJobIds(new Set(list.map((s) => s.job_id)));
-        })
-        .catch(() => {});
-
-      void getRecommendedJobs(token, 3)
-        .then((recs) => {
-          setRecommendations(recs);
-        })
-        .catch(() => {});
-    } else {
-      setSavedJobIds(new Set());
-      setRecommendations([]);
+    if (!token || user?.role !== "candidate") {
+      return;
     }
+
+    void getSavedJobs(token)
+      .then((list) => {
+        setSavedJobIds(new Set(list.map((s) => s.job_id)));
+      })
+      .catch(() => {});
+
+    void getRecommendedJobs(token, 3)
+      .then((recs) => {
+        setRecommendations(recs);
+      })
+      .catch(() => {});
   }, [token, user]);
 
   const handleToggleSave = async (jobId: number) => {

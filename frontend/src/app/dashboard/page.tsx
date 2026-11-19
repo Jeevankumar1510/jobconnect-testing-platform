@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   ArrowUpRight,
+  Bot,
   BriefcaseBusiness,
+  Calendar,
   Check,
   ChevronDown,
+  Compass,
   Download,
   ExternalLink,
   FileText,
@@ -15,9 +18,11 @@ import {
   MapPin,
   Plus,
   Send,
+  Sparkles,
   Trash2,
   UploadCloud,
   Users,
+  Video,
   X,
   Zap,
 } from "lucide-react";
@@ -29,12 +34,14 @@ import {
   deleteProfileResume,
   getJobApplications,
   getMyApplications,
+  getMyInterviews,
   getMyJobs,
   request,
+  scheduleInterview,
   updateApplicationStatus,
   uploadProfileResume,
 } from "@/lib/api";
-import type { Application, ApplicationStatus, Job, Page, User } from "@/lib/types";
+import type { Application, ApplicationStatus, Interview, Job, Page, User } from "@/lib/types";
 
 const transitions: Record<ApplicationStatus, ApplicationStatus[]> = {
   interested: ["ready_to_apply", "applied", "withdrawn"],
@@ -98,11 +105,12 @@ function CandidateDashboard({
   user: User;
   refreshProfile: () => Promise<void>;
 }) {
-  const [activeTab, setActiveTab] = useState<"applications" | "saved" | "profile" | "notifications">("applications");
+  const [activeTab, setActiveTab] = useState<"applications" | "saved" | "profile" | "notifications" | "interviews">("applications");
   const [applications, setApplications] = useState<Application[]>([]);
   const [savedJobs, setSavedJobs] = useState<import("@/lib/types").SavedJob[]>([]);
   const [profile, setProfile] = useState<import("@/lib/types").CandidateProfile | null>(null);
   const [notifications, setNotifications] = useState<import("@/lib/types").Notification[]>([]);
+  const [interviews, setInterviews] = useState<Interview[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -137,16 +145,18 @@ function CandidateDashboard({
     setBusy(true);
     setError("");
     try {
-      const [appData, savedData, profileData, notifData] = await Promise.allSettled([
+      const [appData, savedData, profileData, notifData, ivData] = await Promise.allSettled([
         getMyApplications(token),
         import("@/lib/api").then((m) => m.getSavedJobs(token)),
         import("@/lib/api").then((m) => m.getCandidateProfile(token)),
         import("@/lib/api").then((m) => m.getNotifications(token)),
+        getMyInterviews(token),
       ]);
 
       if (appData.status === "fulfilled") setApplications(appData.value.items);
       if (savedData.status === "fulfilled") setSavedJobs(savedData.value);
       if (notifData.status === "fulfilled") setNotifications(notifData.value);
+      if (ivData.status === "fulfilled") setInterviews(ivData.value);
       if (profileData.status === "fulfilled" && profileData.value) {
         const p = profileData.value;
         setProfile(p);
@@ -313,8 +323,69 @@ function CandidateDashboard({
         </div>
       </div>
 
+      {/* AI Intelligence Command Center for Freshers */}
+      <div className="mt-8 mb-8 rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-950 p-6 text-white shadow-lg">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-0.5 text-[11px] font-semibold backdrop-blur-md">
+              <Sparkles size={13} /> AI Suite for Freshers
+            </span>
+            <h2 className="mt-2 text-lg font-bold">Fresher AI Intelligence Hub</h2>
+            <p className="text-xs text-blue-200">
+              Benchmark your resume against ATS systems, uncover skill gaps, and practice interactive mock interviews.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Link
+            href="/resume-analyzer"
+            className="flex flex-col rounded-xl bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/20 hover:shadow-md"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-white">
+              <FileText size={16} />
+            </span>
+            <span className="mt-2.5 text-xs font-bold">Resume ATS Analyzer</span>
+            <span className="mt-0.5 text-[10px] text-blue-200">ATS score &amp; keywords</span>
+          </Link>
+
+          <Link
+            href="/skill-gap"
+            className="flex flex-col rounded-xl bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/20 hover:shadow-md"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-white">
+              <Compass size={16} />
+            </span>
+            <span className="mt-2.5 text-xs font-bold">Skill Gap &amp; Roadmap</span>
+            <span className="mt-0.5 text-[10px] text-purple-200">30-day milestone plan</span>
+          </Link>
+
+          <Link
+            href="/interview-prep"
+            className="flex flex-col rounded-xl bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/20 hover:shadow-md"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white">
+              <Zap size={16} />
+            </span>
+            <span className="mt-2.5 text-xs font-bold">Mock Interview Simulator</span>
+            <span className="mt-0.5 text-[10px] text-emerald-200">Instant score out of 10</span>
+          </Link>
+
+          <Link
+            href="/assistant"
+            className="flex flex-col rounded-xl bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/20 hover:shadow-md"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white">
+              <Bot size={16} />
+            </span>
+            <span className="mt-2.5 text-xs font-bold">AI Career Copilot</span>
+            <span className="mt-0.5 text-[10px] text-indigo-200">RAG multi-agent chat</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Navigation Tabs */}
-      <div className="flex border-b border-stone-200 mt-6 mb-6 gap-2">
+      <div className="flex flex-wrap border-b border-stone-200 mt-6 mb-6 gap-2">
         <button
           type="button"
           className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
@@ -325,6 +396,17 @@ function CandidateDashboard({
           onClick={() => setActiveTab("applications")}
         >
           Application Tracker ({applications.length})
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "interviews"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-stone-500 hover:text-stone-800"
+          }`}
+          onClick={() => setActiveTab("interviews")}
+        >
+          Scheduled Interviews ({interviews.length})
         </button>
         <button
           type="button"
@@ -816,7 +898,83 @@ function CandidateDashboard({
         </section>
       )}
 
-      {/* TAB 4: NOTIFICATIONS & HIRING UPDATES */}
+      {/* TAB 5: SCHEDULED INTERVIEWS */}
+      {activeTab === "interviews" && (
+        <section className="dashboard-section">
+          <div className="dashboard-section-heading">
+            <div>
+              <span className="eyebrow eyebrow-light">UPCOMING MEETINGS</span>
+              <h2>Scheduled Interviews ({interviews.length})</h2>
+              <p>Direct meeting invites, interview rounds, and instructions from recruiters.</p>
+            </div>
+            <button className="button button-secondary button-small" onClick={loadData}>
+              Refresh
+            </button>
+          </div>
+
+          {busy ? (
+            <div className="dashboard-empty"><div className="loader" />Loading interviews…</div>
+          ) : interviews.length ? (
+            <div className="grid gap-4">
+              {interviews.map((iv) => (
+                <div
+                  key={iv.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          {iv.round_type}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                          {iv.duration_minutes} minutes
+                        </span>
+                        <span className="text-xs font-semibold uppercase text-slate-400">
+                          Status: {iv.status}
+                        </span>
+                      </div>
+                      <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                        {iv.job_title} at {iv.company}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Date: {new Date(iv.scheduled_at).toLocaleString([], { dateStyle: "full", timeStyle: "short" })}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {iv.meeting_link ? (
+                        <a
+                          href={iv.meeting_link.startsWith("http") ? iv.meeting_link : `https://${iv.meeting_link}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
+                        >
+                          <Video size={14} /> Join Meeting
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-400">Link will be provided</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {iv.notes && (
+                    <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300">
+                      <strong>Recruiter Instructions:</strong> {iv.notes}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Calendar size={28} className="text-slate-300" />
+              <h3>No interviews scheduled yet</h3>
+              <p>When a recruiter reviews your application and books an interview session, it will appear here with the meeting link.</p>
+            </div>
+          )}
+        </section>
+      )}
       {activeTab === "notifications" && (
         <section className="dashboard-section">
           <div className="dashboard-section-heading">
@@ -1068,6 +1226,15 @@ function RecruiterJobCard({ job, token }: { job: Job; token: string }) {
 function ApplicantRow({ application, token, onUpdate }: { application: Application; token: string; onUpdate: (application: Application) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState("");
+  const [scheduleData, setScheduleData] = useState({
+    scheduled_at: "",
+    duration_minutes: 45,
+    round_type: "Technical Round 1",
+    meeting_link: "",
+    notes: "",
+  });
   const nextStatuses = transitions[application.status];
 
   async function updateStatus(status: ApplicationStatus) {
@@ -1077,6 +1244,38 @@ function ApplicantRow({ application, token, onUpdate }: { application: Applicati
       onUpdate(await updateApplicationStatus(application.id, status, token));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Status update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleScheduleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!scheduleData.scheduled_at) {
+      setError("Please select a date and time for the interview.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await scheduleInterview(
+        {
+          job_id: application.job_id,
+          candidate_id: application.candidate_id,
+          application_id: application.id,
+          scheduled_at: new Date(scheduleData.scheduled_at).toISOString(),
+          duration_minutes: Number(scheduleData.duration_minutes),
+          round_type: scheduleData.round_type,
+          meeting_link: scheduleData.meeting_link || null,
+          notes: scheduleData.notes || null,
+        },
+        token,
+      );
+      setScheduleSuccess("Interview scheduled successfully! Candidate notified.");
+      onUpdate({ ...application, status: "interview" });
+      setTimeout(() => setShowScheduleModal(false), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to schedule interview.");
     } finally {
       setBusy(false);
     }
@@ -1108,12 +1307,166 @@ function ApplicantRow({ application, token, onUpdate }: { application: Applicati
   }
 
   return (
-    <div className="applicant-row">
+    <div className="applicant-row flex flex-wrap items-center gap-3">
       <span className="applicant-avatar">{String(application.candidate_id).slice(-2)}</span>
-      <div className="applicant-details"><strong>Candidate #{application.candidate_id}</strong><small>Applied {new Date(application.created_at).toLocaleDateString()}</small>{application.cover_letter && <p>{application.cover_letter}</p>}{error && <small className="inline-error">{error}</small>}</div>
+      <div className="applicant-details">
+        <strong>Candidate #{application.candidate_id}</strong>
+        <small>Applied {new Date(application.created_at).toLocaleDateString()}</small>
+        {application.cover_letter && <p>{application.cover_letter}</p>}
+        {error && <small className="inline-error">{error}</small>}
+      </div>
       <span className={`status-pill status-${application.status}`}>{statusLabels[application.status]}</span>
-      <button className="resume-button" onClick={() => void downloadResume()} disabled={busy}><FileText size={15} /> Resume</button>
-      {nextStatuses.length > 0 && <label className="status-select-wrap"><span className="sr-only">Update application status</span><select disabled={busy} value="" onChange={(event) => { if (event.target.value) void updateStatus(event.target.value as ApplicationStatus); }}><option value="">Update…</option>{nextStatuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select><ChevronDown size={13} /></label>}
+      <button className="resume-button" onClick={() => void downloadResume()} disabled={busy}>
+        <FileText size={15} /> Resume
+      </button>
+
+      <button
+        type="button"
+        className="button button-small button-outline flex items-center gap-1.5"
+        onClick={() => setShowScheduleModal(true)}
+      >
+        <Calendar size={13} /> Interview
+      </button>
+
+      {nextStatuses.length > 0 && (
+        <label className="status-select-wrap">
+          <span className="sr-only">Update application status</span>
+          <select
+            disabled={busy}
+            value=""
+            onChange={(event) => {
+              if (event.target.value) void updateStatus(event.target.value as ApplicationStatus);
+            }}
+          >
+            <option value="">Update…</option>
+            {nextStatuses.map((status) => (
+              <option key={status} value={status}>
+                {statusLabels[status]}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={13} />
+        </label>
+      )}
+
+      {/* Schedule Interview Modal Dialog */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Calendar size={16} className="text-blue-600" />
+                Schedule Candidate Interview
+              </h3>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-600"
+                onClick={() => setShowScheduleModal(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {scheduleSuccess && (
+              <div className="mt-3 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                {scheduleSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleScheduleSubmit} className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                  Interview Date &amp; Time
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={scheduleData.scheduled_at}
+                  onChange={(e) => setScheduleData({ ...scheduleData, scheduled_at: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                    Round Type
+                  </label>
+                  <select
+                    value={scheduleData.round_type}
+                    onChange={(e) => setScheduleData({ ...scheduleData, round_type: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value="Technical Round 1">Technical Round 1</option>
+                    <option value="Technical Round 2">Technical Round 2</option>
+                    <option value="Machine Coding Round">Machine Coding Round</option>
+                    <option value="System Architecture">System Architecture</option>
+                    <option value="HR &amp; Culture Round">HR &amp; Culture Round</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                    Duration
+                  </label>
+                  <select
+                    value={scheduleData.duration_minutes}
+                    onChange={(e) => setScheduleData({ ...scheduleData, duration_minutes: Number(e.target.value) })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value={30}>30 Minutes</option>
+                    <option value={45}>45 Minutes</option>
+                    <option value={60}>60 Minutes</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                  Meeting Video URL (Google Meet / Zoom / Teams)
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://meet.google.com/abc-defg-hij"
+                  value={scheduleData.meeting_link}
+                  onChange={(e) => setScheduleData({ ...scheduleData, meeting_link: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                  Instructions for Candidate (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Please be prepared to discuss your projects and share your IDE."
+                  value={scheduleData.notes}
+                  onChange={(e) => setScheduleData({ ...scheduleData, notes: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+                  onClick={() => setShowScheduleModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {busy ? "Booking…" : "Send Interview Invite"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

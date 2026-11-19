@@ -33,3 +33,10 @@ frontend/.next/
 frontend/out/
 frontend/*.tsbuildinfo
 frontend/npm-debug.log*
+
+# Large template PDFs and local databases
+resume_studio/templates/*.pdf
+*.db
+*-Jeevan*
+tests/unit/*.py
+tests/regression/*.py
