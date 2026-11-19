@@ -54,15 +54,15 @@ export default function ResumeStudioDashboard() {
 
   // Create new resume modal
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [newResumeName, setNewResumeName] = useState<string>("My ATS Resume");
+  const [newResumeName, setNewResumeName] = useState<string>("My ATS Technical Resume");
   const [newResumeRole, setNewResumeRole] = useState<string>("Software Engineer");
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("modern-professional");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("ats-technical-pro");
 
   // Import resume modal
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResumeName, setImportResumeName] = useState<string>("");
-  const [importTemplateId, setImportTemplateId] = useState<string>("modern-professional");
+  const [importTemplateId, setImportTemplateId] = useState<string>("ats-technical-pro");
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

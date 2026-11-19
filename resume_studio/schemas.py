@@ -113,9 +113,9 @@ class ResumeDataSchema(BaseModel):
 
 
 class ResumeCreateRequest(BaseModel):
-    resume_name: str = "My Professional Resume"
-    template_id: str = "modern-professional"
-    target_role: str | None = None
+    resume_name: str = "My Technical ATS Resume"
+    template_id: str = "ats-technical-pro"
+    target_role: str | None = "Software Engineer"
     job_id: int | None = None
     resume_data: ResumeDataSchema = Field(default_factory=ResumeDataSchema)
 

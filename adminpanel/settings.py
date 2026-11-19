@@ -63,16 +63,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "adminpanel.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": project_settings.postgres_db,
-        "USER": project_settings.postgres_user,
-        "PASSWORD": project_settings.postgres_password.get_secret_value() if hasattr(project_settings.postgres_password, "get_secret_value") else str(project_settings.postgres_password),
-        "HOST": project_settings.postgres_host,
-        "PORT": project_settings.postgres_port,
+_db_url_str = str(project_settings.database_url)
+if _db_url_str.startswith("sqlite"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "jobconnect_local.db",
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": project_settings.postgres_db,
+            "USER": project_settings.postgres_user,
+            "PASSWORD": project_settings.postgres_password.get_secret_value() if hasattr(project_settings.postgres_password, "get_secret_value") else str(project_settings.postgres_password),
+            "HOST": project_settings.postgres_host,
+            "PORT": project_settings.postgres_port,
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

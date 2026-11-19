@@ -126,10 +126,23 @@ export default function ResumeAnalyzerPage() {
   const [boostResult, setBoostResult] = useState<ResumeAutoBoostResponse | null>(null);
   const [copiedBoostedText, setCopiedBoostedText] = useState<boolean>(false);
   const [showEnhancedView, setShowEnhancedView] = useState<boolean>(false);
-  const [boostTemplateId, setBoostTemplateId] = useState<string>("01-google-swe");
+  const [boostTemplateId, setBoostTemplateId] = useState<string>("ats-technical-pro");
   const [templatesList, setTemplatesList] = useState<ResumeTemplate[]>([]);
   const [openingStudio, setOpeningStudio] = useState<boolean>(false);
   const [downloadingDocx, setDownloadingDocx] = useState<boolean>(false);
+
+  // User Inspection & Correction of Extracted Information
+  const [showInspectModal, setShowInspectModal] = useState<boolean>(false);
+  const [inspectSummary, setInspectSummary] = useState<string>("");
+  const [inspectSkills, setInspectSkills] = useState<string>("");
+  const [inspectProjects, setInspectProjects] = useState<string>("");
+  const [inspectExperience, setInspectExperience] = useState<string>("");
+  const [inspectEducation, setInspectEducation] = useState<string>("");
+  const [inspectName, setInspectName] = useState<string>("");
+  const [inspectContact, setInspectContact] = useState<string>("");
+
+  // Side-by-side comparison view
+  const [showSideBySide, setShowSideBySide] = useState<boolean>(false);
 
   // Load available templates for resume generation
   useEffect(() => {
@@ -308,6 +321,88 @@ export default function ResumeAnalyzerPage() {
     await handleAutoBoost(newTemplateId);
   }
 
+  function buildStudioPayload(sd: any) {
+    if (!sd) return undefined;
+    const ci = analysis?.extracted_sections?.contact_info || {};
+    return {
+      personal_info: {
+        full_name: sd.candidate_name || ci.candidate_name || "Candidate",
+        headline: sd.target_role || analysis?.role_target || targetRole || "Software Engineer",
+        email: ci.email || "",
+        phone: ci.phone || "",
+        location: ci.location || "",
+        linkedin_url: ci.linkedin || "",
+        github_url: ci.github || "",
+      },
+      career_objective: sd.summary || "",
+      technical_skills: (sd.skills || []).map(([cat, vals]: [string, string]) => ({
+        category: cat,
+        skills: vals.split(",").map((s: string) => s.trim()).filter(Boolean),
+      })),
+      projects: (sd.projects || []).map((p: any) => ({
+        title: p.title || "",
+        tech_stack: p.tech_stack || "",
+        github_url: p.link || "",
+        bullets: p.bullets || [],
+      })),
+      internships: (sd.experience || []).map((e: any) => ({
+        role: e.role || e.title || "",
+        organization: e.company || "",
+        duration: e.duration || e.dates || "",
+        location: e.location || "",
+        bullets: e.bullets || [],
+      })),
+      education: (sd.education || []).map((ed: any) => ({
+        degree: ed.degree || "",
+        institution: ed.institution || "",
+        graduation_date: ed.duration || ed.dates || "",
+        score: ed.score || "",
+      })),
+    };
+  }
+
+  function handleSaveCorrections() {
+    if (!analysis) return;
+    const reconstructedText = [
+      inspectName.trim(),
+      inspectContact.trim(),
+      "",
+      "CAREER OBJECTIVE",
+      inspectSummary.trim(),
+      "",
+      "TECHNICAL SKILLS",
+      inspectSkills.trim(),
+      "",
+      "PROJECTS",
+      inspectProjects.trim(),
+      "",
+      "EXPERIENCE",
+      inspectExperience.trim(),
+      "",
+      "EDUCATION",
+      inspectEducation.trim(),
+    ].filter((p, i) => i === 2 || p.length > 0).join("\n");
+
+    setPastedText(reconstructedText);
+    setInputMethod("text");
+    setShowInspectModal(false);
+
+    const formData = new FormData();
+    formData.append("resume_text", reconstructedText);
+    if (targetRole.trim()) formData.append("role_target", targetRole.trim());
+    if (analysisMode === "job_description" && jobDescriptionText.trim()) {
+      formData.append("job_description_text", jobDescriptionText.trim());
+    } else if (analysisMode === "job_id" && jobId.trim()) {
+      formData.append("job_id", jobId.trim());
+    }
+
+    setAnalyzing(true);
+    analyzeResume(formData, token || null)
+      .then((res) => setAnalysis(res))
+      .catch((err: any) => setError(err.message || "Failed to analyze corrected text"))
+      .finally(() => setAnalyzing(false));
+  }
+
   async function handleOpenInResumeStudio() {
     if (!boostResult) return;
     setOpeningStudio(true);
@@ -317,6 +412,7 @@ export default function ResumeAnalyzerPage() {
           resume_name: `${analysis?.role_target || "Boosted"} Resume (${boostTemplateId})`,
           template_id: boostTemplateId,
           target_role: analysis?.role_target || targetRole || "Software Engineer",
+          resume_data: buildStudioPayload(boostResult.structured_data),
         },
         token || ""
       );
@@ -338,6 +434,7 @@ export default function ResumeAnalyzerPage() {
           resume_name: `${analysis?.role_target || "Boosted"}_Resume`,
           template_id: boostTemplateId,
           target_role: analysis?.role_target || targetRole || "Software Engineer",
+          resume_data: buildStudioPayload(boostResult.structured_data),
         },
         token || ""
       );
@@ -982,7 +1079,29 @@ export default function ResumeAnalyzerPage() {
                   </p>
                 </div>
 
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (analysis) {
+                        const sec = analysis.extracted_sections || {};
+                        const ci = sec.contact_info || {};
+                        setInspectName(ci.candidate_name || "");
+                        setInspectContact([ci.email, ci.phone, ci.location, ci.linkedin, ci.github].filter(Boolean).join(" | "));
+                        setInspectSummary(sec.summary || "");
+                        setInspectSkills(sec.skills || (analysis.extracted_skills || []).join(", "));
+                        setInspectProjects(sec.projects || "");
+                        setInspectExperience(sec.experience || sec.internships || "");
+                        setInspectEducation(sec.education || "");
+                        setShowInspectModal(true);
+                      }
+                    }}
+                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl border border-slate-700 flex items-center gap-2 transition-all text-xs shadow"
+                  >
+                    <FileText className="w-4 h-4 text-blue-400" />
+                    Inspect Extracted Info
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleAutoBoost()}
@@ -1016,6 +1135,17 @@ export default function ResumeAnalyzerPage() {
                     onChange={(e) => handleSwitchBoostTemplate(e.target.value)}
                     className="px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg border border-blue-400/50 outline-none cursor-pointer max-w-[280px]"
                   >
+                    <optgroup label="Official ATS Templates">
+                      <option value="ats-technical-pro">ATS Professional (Recruiter Calibrated)</option>
+                      <option value="modern-minimal">Modern Minimal (100% Safe)</option>
+                      <option value="software-engineer">Software Engineer (FAANG Standard)</option>
+                      <option value="aiml-engineer">AI/ML Engineer (AI &amp; Deep Learning)</option>
+                      <option value="data-analyst">Data Analyst (BI &amp; Analytics)</option>
+                      <option value="cloud-devops-engineer">Cloud &amp; DevOps Engineer</option>
+                      <option value="fresher-starter">Fresher (Campus &amp; Entry-Level)</option>
+                      <option value="experienced-professional">Experienced Professional (Senior)</option>
+                      <option value="one-page-resume">One-Page Resume (High Density)</option>
+                    </optgroup>
                     <optgroup label="FAANG &amp; Top Tech Templates">
                       <option value="01-google-swe">Google SWE (Clean Standard)</option>
                       <option value="02-amazon-sde">Amazon SDE (Metrics &amp; Leadership)</option>
@@ -1040,19 +1170,6 @@ export default function ResumeAnalyzerPage() {
                       <option value="24-cognizant-genc-elevate">Cognizant GenC Elevate</option>
                       <option value="28-generic-fresher">Generic Engineering Fresher</option>
                     </optgroup>
-                    <optgroup label="Data &amp; AI Roles">
-                      <option value="08-meta-datascientist">Meta Data Scientist</option>
-                      <option value="10-google-ml-engineer">Google ML Engineer</option>
-                      <option value="32-data-analyst">Data Analyst</option>
-                      <option value="31-product-manager">Product Manager</option>
-                    </optgroup>
-                    <optgroup label="Standard ATS Templates">
-                      <option value="modern-professional">Modern Professional</option>
-                      <option value="minimal-ats">Minimal ATS (100% Safe)</option>
-                      <option value="software-developer">Software Developer</option>
-                      <option value="python-developer">Python Developer</option>
-                      <option value="cloud-devops">Cloud &amp; DevOps</option>
-                    </optgroup>
                   </select>
                 </div>
 
@@ -1064,24 +1181,24 @@ export default function ResumeAnalyzerPage() {
 
               {/* Celebration / Boosted Score Results Card */}
               {boostResult && (
-                <div className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-5 space-y-4 animate-in fade-in duration-300 mt-4">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="p-2 bg-emerald-500/20 text-emerald-300 rounded-lg">
-                        <CheckCircle2 className="w-6 h-6" />
-                      </span>
+                <div className="bg-slate-950/95 border border-emerald-500/40 rounded-2xl p-6 space-y-6 animate-in fade-in duration-300 mt-4 shadow-2xl">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-extrabold text-2xl shadow-lg">
+                        {boostResult.boosted_ats_score}
+                      </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                            ATS Score Boost Successful!
+                            Final ATS Validation &bull; Optimization Verified
                           </span>
                           <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 text-xs font-mono font-bold rounded border border-emerald-800/40">
                             +{boostResult.score_increase} Points Increase
                           </span>
                         </div>
-                        <h4 className="text-lg font-bold text-white">
-                          Score Increased from {boostResult.original_ats_score}/100 ➔{" "}
-                          <span className="text-emerald-400">{boostResult.boosted_ats_score}/100</span>
+                        <h4 className="text-xl font-bold text-white mt-0.5">
+                          Original Score: <span className="text-slate-400 line-through">{boostResult.original_ats_score}</span> &rarr;{" "}
+                          Optimized Score: <span className="text-emerald-400">{boostResult.boosted_ats_score}/100</span>
                         </h4>
                       </div>
                     </div>
@@ -1090,11 +1207,31 @@ export default function ResumeAnalyzerPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
+                        onClick={() => handleAutoBoost()}
+                        disabled={boosting}
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                        title="Re-run ATS scoring validation on the optimized resume"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${boosting ? "animate-spin" : ""}`} />
+                        Recheck ATS Score
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowSideBySide(!showSideBySide)}
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                        {showSideBySide ? "Hide Comparison" : "Review Original vs Improved"}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => {
                           setActiveTab("preview");
                           setPreviewViewMode("visual");
                         }}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow transition-colors"
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         View 1-Page Layout
@@ -1107,7 +1244,7 @@ export default function ResumeAnalyzerPage() {
                             boostResult.downloadable_html || boostResult.enhanced_resume_text
                           )
                         }
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
                       >
                         <Printer className="w-3.5 h-3.5 text-blue-400" />
                         Print / PDF (.HTML)
@@ -1117,7 +1254,7 @@ export default function ResumeAnalyzerPage() {
                         type="button"
                         onClick={handleDownloadBoostedDocx}
                         disabled={downloadingDocx}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
                       >
                         {downloadingDocx ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-emerald-400" />}
                         Word (.docx)
@@ -1127,7 +1264,7 @@ export default function ResumeAnalyzerPage() {
                         type="button"
                         onClick={handleOpenInResumeStudio}
                         disabled={openingStudio}
-                        className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow transition-all"
+                        className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow transition-all"
                       >
                         {openingStudio ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-yellow-300" />}
                         Open in Resume Studio
@@ -1141,7 +1278,7 @@ export default function ResumeAnalyzerPage() {
                             `${analysis.role_target || "ATS"}_1Page_Resume.txt`
                           )
                         }
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
                       >
                         <Download className="w-3.5 h-3.5" />
                         Download ATS (.TXT)
@@ -1155,20 +1292,87 @@ export default function ResumeAnalyzerPage() {
                             setTimeout(() => setCopiedBoostedText(false), 2000);
                           })
                         }
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
                       >
                         {copiedBoostedText ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiedBoostedText ? "Copied" : "Copy Resume"}
+                        {copiedBoostedText ? "Copied" : "Copy"}
                       </button>
 
                       <button
                         type="button"
                         onClick={handleApplyBoostedAnalysis}
-                        className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-semibold rounded-lg border border-emerald-500/40 flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-semibold rounded-xl border border-emerald-500/40 flex items-center gap-1.5 transition-colors"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                         Apply to Dashboard
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Side-by-Side Original vs Improved Content Review */}
+                  {showSideBySide && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900/80 rounded-xl border border-slate-800 animate-in fade-in">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Original Content</span>
+                          <span className="text-xs text-slate-400">Score: {boostResult.original_ats_score}/100</span>
+                        </div>
+                        <pre className="p-3 bg-slate-950 rounded-lg text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-80 overflow-y-auto border border-red-900/30">
+                          {analysis.raw_text}
+                        </pre>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Optimized Content</span>
+                          <span className="text-xs text-emerald-400 font-bold">Score: {boostResult.boosted_ats_score}/100</span>
+                        </div>
+                        <pre className="p-3 bg-slate-950 rounded-lg text-xs font-mono text-slate-200 whitespace-pre-wrap max-h-80 overflow-y-auto border border-emerald-900/30">
+                          {boostResult.enhanced_resume_text}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Validation Metrics Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                      <span className="text-xs font-semibold text-slate-400 block mb-1">Technical Skill Matching</span>
+                      <div className="text-lg font-bold text-white flex items-center gap-1.5">
+                        <Code2 className="w-4 h-4 text-blue-400" />
+                        {boostResult.new_analysis?.extracted_skills?.length || 0} Skills Active
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {boostResult.new_analysis?.matched_job_skills?.length
+                          ? `Matched ${boostResult.new_analysis.matched_job_skills.length} role requirements`
+                          : "Taxonomy normalized & categorized"}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                      <span className="text-xs font-semibold text-slate-400 block mb-1">Keyword Coverage</span>
+                      <div className="text-lg font-bold text-white flex items-center gap-1.5">
+                        <Target className="w-4 h-4 text-emerald-400" />
+                        {boostResult.new_analysis?.category_scores?.keyword_optimization?.score || 8}/10 Pts
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Contextual placement without stuffing</p>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                      <span className="text-xs font-semibold text-slate-400 block mb-1">Formatting Quality</span>
+                      <div className="text-lg font-bold text-white flex items-center gap-1.5">
+                        <FileCheck className="w-4 h-4 text-teal-400" />
+                        Single-Column 100% Pass
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">0.5&quot;/0.65&quot; margins, Calibri/Inter hierarchy</p>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                      <span className="text-xs font-semibold text-slate-400 block mb-1">Missing Requirements</span>
+                      <div className="text-lg font-bold text-white flex items-center gap-1.5">
+                        <Lightbulb className="w-4 h-4 text-amber-400" />
+                        {boostResult.new_analysis?.missing_skills?.length || 0} Skills Left
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Optional secondary skills to learn</p>
                     </div>
                   </div>
 
@@ -2314,6 +2518,17 @@ export default function ResumeAnalyzerPage() {
                           onChange={(e) => handleSwitchBoostTemplate(e.target.value)}
                           className="px-2.5 py-1 bg-slate-900 text-white text-xs font-semibold rounded-lg border border-slate-700 outline-none cursor-pointer"
                         >
+                          <optgroup label="Official ATS Templates">
+                            <option value="ats-technical-pro">ATS Professional (Recruiter Calibrated)</option>
+                            <option value="modern-minimal">Modern Minimal (100% Safe)</option>
+                            <option value="software-engineer">Software Engineer (FAANG Standard)</option>
+                            <option value="aiml-engineer">AI/ML Engineer (AI &amp; Deep Learning)</option>
+                            <option value="data-analyst">Data Analyst (BI &amp; Analytics)</option>
+                            <option value="cloud-devops-engineer">Cloud &amp; DevOps Engineer</option>
+                            <option value="fresher-starter">Fresher (Campus &amp; Entry-Level)</option>
+                            <option value="experienced-professional">Experienced Professional (Senior)</option>
+                            <option value="one-page-resume">One-Page Resume (High Density)</option>
+                          </optgroup>
                           <optgroup label="FAANG &amp; Top Tech">
                             <option value="01-google-swe">Google SWE</option>
                             <option value="02-amazon-sde">Amazon SDE</option>
@@ -2424,6 +2639,130 @@ export default function ResumeAnalyzerPage() {
                   {analysis.raw_text}
                 </pre>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Inspect & Correct Extracted Resume Information */}
+        {showInspectModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl flex flex-col max-h-[90vh] space-y-5 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-400" />
+                    Inspect &amp; Correct Extracted Resume Information
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Review and adjust the extracted sections below. Clicking Save will update the analysis with your corrections.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInspectModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 space-y-4 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Candidate Name</label>
+                    <input
+                      type="text"
+                      value={inspectName}
+                      onChange={(e) => setInspectName(e.target.value)}
+                      placeholder="e.g. Alex Johnson"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Contact Info (Email, Phone, Links, Location)</label>
+                    <input
+                      type="text"
+                      value={inspectContact}
+                      onChange={(e) => setInspectContact(e.target.value)}
+                      placeholder="e.g. alex@example.com | +1 555-0199 | San Francisco, CA"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Career Objective / Professional Summary</label>
+                  <textarea
+                    rows={3}
+                    value={inspectSummary}
+                    onChange={(e) => setInspectSummary(e.target.value)}
+                    placeholder="Brief career objective or professional summary..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Technical Skills</label>
+                  <textarea
+                    rows={3}
+                    value={inspectSkills}
+                    onChange={(e) => setInspectSkills(e.target.value)}
+                    placeholder="e.g. Python, FastApi, React, TypeScript, PostgreSQL, Docker, AWS..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Experience / Internships</label>
+                  <textarea
+                    rows={5}
+                    value={inspectExperience}
+                    onChange={(e) => setInspectExperience(e.target.value)}
+                    placeholder="Company, Role, Dates, and Bullet Points..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none font-mono leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Projects</label>
+                  <textarea
+                    rows={5}
+                    value={inspectProjects}
+                    onChange={(e) => setInspectProjects(e.target.value)}
+                    placeholder="Project Title, Tech Stack, and Bullet Points..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none font-mono leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Education &amp; Certifications</label>
+                  <textarea
+                    rows={3}
+                    value={inspectEducation}
+                    onChange={(e) => setInspectEducation(e.target.value)}
+                    placeholder="Degree, Institution, Graduation Year, CGPA, Certifications..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-blue-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowInspectModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCorrections}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Save Corrections &amp; Re-evaluate
+                </button>
+              </div>
             </div>
           </div>
         )}

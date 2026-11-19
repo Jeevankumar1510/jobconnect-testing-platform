@@ -400,7 +400,56 @@ def improve_resume_content(
     role = req.target_role or "Software Developer"
     mode = req.mode
 
-    # 1. Try Gemini API if available
+    # 1. Try OpenAI ChatGPT API if available
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key and len(content) > 5:
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            sys_msg = (
+                f"You are a tech recruiter and ATS resume optimization coach. The candidate is applying for '{role}'.\n"
+                f"Task: Improve the candidate's {mode} below following strict guidelines:\n"
+                "- Do NOT invent companies, awards, or fake numerical metrics.\n"
+                "- Use strong active engineering verbs (e.g. Engineered, Implemented, Designed, Integrated, Optimized).\n"
+                "- Structure bullet points using Google's X-Y-Z formula.\n"
+                "Return a valid JSON object matching: {\"improved\": \"...\", \"explanation\": \"...\", \"tips\": [\"...\", \"...\"]}"
+            )
+            req_obj = urllib.request.Request(
+                url,
+                data=json.dumps({
+                    "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                    "messages": [
+                        {"role": "system", "content": sys_msg},
+                        {"role": "user", "content": content},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 500,
+                    "response_format": {"type": "json_object"},
+                }).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {openai_key}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req_obj, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                raw_text = data["choices"][0]["message"]["content"].strip()
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, dict) and "improved" in parsed:
+                    return ResumeImprovementResponse(
+                        mode=mode,
+                        original=content,
+                        improved=parsed["improved"],
+                        explanation=parsed.get("explanation", "Rewritten with active engineering verbs and ATS keyword alignment powered by ChatGPT."),
+                        tips=parsed.get("tips", [
+                            "Highlight key tools and technologies in bold.",
+                            "Add your real project throughput or test results if available.",
+                        ]),
+                    )
+        except Exception as e:
+            logger.debug("ChatGPT assistant call skipped or timed out: %s", e)
+
+    # 2. Try Gemini API if available
     api_key = os.environ.get("GEMINI_API_KEY")
     if api_key and len(content) > 5:
         try:

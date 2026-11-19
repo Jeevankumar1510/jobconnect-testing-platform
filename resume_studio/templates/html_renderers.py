@@ -16,16 +16,36 @@ def render_template_html(
 
     # Template-specific default styles
     template_styles = {
-        "modern-professional": {"color": "#0f172a", "font": "Inter", "border_style": "1.5px solid #0f172a"},
+        # 1. ATS Professional
+        "ats-technical-pro": {"color": "#0f172a", "font": "Calibri", "border_style": "1.2px solid #0f172a"},
+        "ats-professional": {"color": "#0f172a", "font": "Calibri", "border_style": "1.2px solid #0f172a"},
+        # 2. Modern Minimal
+        "modern-minimal": {"color": "#111827", "font": "Arial", "border_style": "1px solid #111827"},
         "minimal-ats": {"color": "#111827", "font": "Arial", "border_style": "1px solid #111827"},
+        # 3. Software Engineer
+        "software-engineer": {"color": "#2563eb", "font": "Inter", "border_style": "1.5px solid #2563eb"},
         "software-developer": {"color": "#2563eb", "font": "Inter", "border_style": "1.5px solid #2563eb"},
-        "python-developer": {"color": "#059669", "font": "Roboto", "border_style": "1.5px solid #059669"},
+        "tech-modern": {"color": "#2563eb", "font": "Inter", "border_style": "1.5px solid #2563eb"},
+        # 4. AI/ML Engineer
         "aiml-engineer": {"color": "#4f46e5", "font": "Inter", "border_style": "1.5px solid #4f46e5"},
-        "data-analyst": {"color": "#0284c7", "font": "Inter", "border_style": "1.5px solid #0284c7"},
-        "cloud-devops": {"color": "#d97706", "font": "Inter", "border_style": "1.5px solid #d97706"},
-        "fresher-graduate": {"color": "#0f766e", "font": "Inter", "border_style": "1.5px solid #0f766e"},
-        "internship-resume": {"color": "#7c3aed", "font": "Roboto", "border_style": "1.5px solid #7c3aed"},
+        # 5. Data Analyst
+        "data-analyst": {"color": "#0284c7", "font": "Calibri", "border_style": "1.5px solid #0284c7"},
+        # 6. Cloud & DevOps Engineer
+        "cloud-devops-engineer": {"color": "#0d9488", "font": "Inter", "border_style": "1.5px solid #0d9488"},
+        "cloud-devops": {"color": "#0d9488", "font": "Inter", "border_style": "1.5px solid #0d9488"},
+        # 7. Fresher
+        "fresher-starter": {"color": "#0f766e", "font": "Calibri", "border_style": "1.5px solid #0f766e"},
+        "fresher": {"color": "#0f766e", "font": "Calibri", "border_style": "1.5px solid #0f766e"},
+        "fresher-graduate": {"color": "#0f766e", "font": "Calibri", "border_style": "1.5px solid #0f766e"},
+        # 8. Experienced Professional
+        "experienced-professional": {"color": "#1e293b", "font": "Georgia", "border_style": "1.5px solid #1e293b"},
         "experienced-pro": {"color": "#1e293b", "font": "Georgia", "border_style": "1.5px solid #1e293b"},
+        # 9. One-Page Resume
+        "one-page-resume": {"color": "#0f172a", "font": "Calibri", "border_style": "1.2px solid #0f172a"},
+        "faang-compact": {"color": "#0f172a", "font": "Calibri", "border_style": "1.2px solid #0f172a"},
+        "modern-professional": {"color": "#0f172a", "font": "Inter", "border_style": "1.5px solid #0f172a"},
+        "python-developer": {"color": "#059669", "font": "Roboto", "border_style": "1.5px solid #059669"},
+        "internship-resume": {"color": "#7c3aed", "font": "Roboto", "border_style": "1.5px solid #7c3aed"},
     }
 
     t_style = template_styles.get(template_id)
@@ -196,7 +216,7 @@ def render_template_html(
             ''')
         return f'''
         <div class="section-block">
-          <div class="section-header">INTERNSHIP EXPERIENCE</div>
+          <div class="section-header">PROFESSIONAL EXPERIENCE / INTERNSHIP</div>
           {''.join(int_entries)}
         </div>
         '''
@@ -222,7 +242,7 @@ def render_template_html(
     if template_id in ["fresher-graduate", "internship-resume"]:
         # Education and projects prioritized
         sections_order = [build_summary, build_skills, build_education, build_projects, build_internships, build_certifications]
-    elif template_id in ["software-developer", "python-developer", "aiml-engineer", "data-analyst", "cloud-devops"]:
+    elif template_id in ["ats-technical-pro", "software-developer", "python-developer", "aiml-engineer", "data-analyst", "cloud-devops"]:
         # Skills and projects prioritized
         sections_order = [build_summary, build_skills, build_projects, build_internships, build_education, build_certifications]
     else:
@@ -248,7 +268,7 @@ def render_template_html(
     }}
     body {{
       font-family: "{font}", Calibri, Arial, "Times New Roman", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #334155;
+      color: #111827;
       background: #ffffff;
       font-size: {body_size}pt;
       line-height: {line_h};
@@ -315,7 +335,7 @@ def render_template_html(
     .summary-text {{
       font-size: {body_size}pt;
       line-height: {line_h};
-      color: #334155;
+      color: #111827;
       text-align: {text_align};
       margin-top: {para_before}pt;
       margin-bottom: {para_after}pt;
@@ -328,7 +348,7 @@ def render_template_html(
     .skill-line {{
       font-size: {body_size}pt;
       line-height: {line_h};
-      color: #334155;
+      color: #111827;
       margin-top: {para_before}pt;
       margin-bottom: {para_after}pt;
       text-align: {text_align};

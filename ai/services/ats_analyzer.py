@@ -138,6 +138,43 @@ RELATED_TECH_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+# Semantic Equivalence Map: Maps canonical skills to equivalent synonyms and abbreviations
+SEMANTIC_EQUIVALENCE_MAP: dict[str, list[str]] = {
+    "Python": ["python", "python3", "py", "cpython"],
+    "Java": ["java", "java8", "java11", "java17", "core java", "j2ee"],
+    "JavaScript": ["javascript", "js", "ecmascript", "es6", "vanilla js"],
+    "TypeScript": ["typescript", "ts"],
+    "SQL": ["sql", "mysql", "postgresql", "postgres", "sqlite", "tsql", "plsql"],
+    "PostgreSQL": ["postgresql", "postgres", "psql"],
+    "MySQL": ["mysql", "mariadb"],
+    "MongoDB": ["mongodb", "mongo", "nosql document db"],
+    "React": ["react", "react.js", "reactjs", "react native"],
+    "Next.js": ["next.js", "nextjs", "next"],
+    "Node.js": ["node.js", "nodejs", "node"],
+    "FastAPI": ["fastapi", "python rest api", "starlette"],
+    "Django": ["django", "drf", "django rest framework"],
+    "Flask": ["flask", "werkzeug"],
+    "Docker": ["docker", "containerization", "containers", "dockerfile", "docker compose"],
+    "Kubernetes": ["kubernetes", "k8s", "kubectl"],
+    "AWS": ["aws", "amazon web services", "ec2", "s3", "lambda", "cloudformation", "iam"],
+    "Azure": ["azure", "microsoft azure"],
+    "Google Cloud": ["google cloud", "gcp", "google cloud platform"],
+    "Git": ["git", "github", "gitlab", "version control", "vcs"],
+    "CI/CD": ["ci/cd", "continuous integration", "github actions", "jenkins", "gitlab ci"],
+    "RESTful APIs": ["rest api", "restful api", "rest apis", "restful", "rest api development", "api design"],
+    "GraphQL": ["graphql", "apollo graphql"],
+    "PyTest": ["pytest", "py.test", "unit testing", "python test automation"],
+    "Machine Learning": ["machine learning", "ml", "scikit-learn", "sklearn", "predictive modeling"],
+    "Deep Learning": ["deep learning", "neural networks", "pytorch", "tensorflow", "keras"],
+    "NLP": ["nlp", "natural language processing", "spacy", "nltk", "transformers", "hugging face", "llm", "llms"],
+    "Generative AI": ["generative ai", "genai", "llm", "llms", "langchain", "llamaindex", "rag"],
+    "Linux": ["linux", "ubuntu", "debian", "centos", "bash", "shell scripting"],
+    "Tailwind CSS": ["tailwind", "tailwindcss"],
+    "HTML5": ["html", "html5"],
+    "CSS3": ["css", "css3", "sass", "scss"],
+    "Redis": ["redis", "in-memory cache", "caching"],
+}
+
 # Weak Phrasing & Action Verbs
 WEAK_PHRASES = [
     "worked on", "responsible for", "helped with", "helped in", "helped to",
@@ -355,8 +392,484 @@ def analyze_bullet_improvements(resume_text: str) -> list[dict[str, Any]]:
 
 
 # -----------------------------------------------------------------------------
-# Section 3: ATS Deterministic Scoring Engine
+# Section 3: ATS Deterministic Scoring Engine (9-Pillar Industry Standard)
 # -----------------------------------------------------------------------------
+
+def extract_jd_requirements(jd_text: str) -> tuple[list[str], list[str]]:
+    """
+    Extracts required skills and preferred skills from a Job Description.
+    Identifies explicit required sections vs preferred/bonus sections.
+    """
+    lines = jd_text.split("\n")
+    required_lines = []
+    preferred_lines = []
+    current_mode = "general"
+
+    req_pattern = re.compile(
+        r"(?i)\b(?:required|minimum|basic|must\s+have|qualifications|requirements|what\s+you(?:'ll|\s+will)\s+need|core\s+competencies|role\s+requirements)\b"
+    )
+    pref_pattern = re.compile(
+        r"(?i)\b(?:preferred|nice\s+to\s+have|plus|bonus|good\s+to\s+have|desired|additional\s+qualifications|ideal\s+candidate)\b"
+    )
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if len(stripped.split()) <= 6:
+            if pref_pattern.search(stripped):
+                current_mode = "preferred"
+                continue
+            elif req_pattern.search(stripped):
+                current_mode = "required"
+                continue
+            elif any(h in stripped.lower() for h in ["about", "company", "benefits", "perks", "responsibilities"]):
+                current_mode = "other"
+                continue
+
+        if current_mode == "required":
+            required_lines.append(stripped)
+        elif current_mode == "preferred":
+            preferred_lines.append(stripped)
+
+    req_tech, _ = extract_skills_from_text(" ".join(required_lines))
+    pref_tech, _ = extract_skills_from_text(" ".join(preferred_lines))
+
+    # Fallback if no explicit headers found:
+    all_tech, _ = extract_skills_from_text(jd_text)
+    if not req_tech and not pref_tech:
+        cutoff = max(1, int(len(all_tech) * 0.6))
+        req_tech = all_tech[:cutoff]
+        pref_tech = all_tech[cutoff:]
+    elif not req_tech:
+        req_tech = [s for s in all_tech if s not in pref_tech]
+
+    return req_tech, pref_tech
+
+
+def check_skill_match(candidate_skills: list[str], target_skill: str, resume_lower: str) -> tuple[bool, str]:
+    """
+    Checks if a target skill is matched in candidate skills either:
+    1. Exactly
+    2. Semantically (via synonym / variant in SEMANTIC_EQUIVALENCE_MAP)
+    3. In resume text stream
+    Returns (matched: bool, match_type: 'exact' | 'semantic' | 'text' | 'none')
+    """
+    target_lower = target_skill.lower()
+    candidate_lowers = [s.lower() for s in candidate_skills]
+
+    # 1. Exact match
+    if target_lower in candidate_lowers:
+        return True, "exact"
+
+    # 2. Semantic equivalence match
+    equivalents = SEMANTIC_EQUIVALENCE_MAP.get(target_skill, [])
+    for eq in equivalents:
+        if eq.lower() in candidate_lowers:
+            return True, "semantic"
+        if re.search(r"\b" + re.escape(eq.lower()) + r"\b", resume_lower):
+            return True, "semantic"
+
+    # 3. Direct regex in text
+    if re.search(r"\b" + re.escape(target_lower) + r"\b", resume_lower):
+        return True, "text"
+
+    return False, "none"
+
+
+def verify_contextual_skills(candidate_skills: list[str], sections: dict[str, Any]) -> tuple[list[str], float]:
+    """
+    Verifies which candidate skills appear inside practical descriptive text
+    (Projects, Experience, Internships) rather than solely in the skills list.
+    Returns (verified_skills_list, contextual_ratio).
+    """
+    context_text = f"{sections.get('projects', '')} {sections.get('experience', '')} {sections.get('internships', '')}".lower()
+    verified = []
+    for skill in candidate_skills:
+        skill_lower = skill.lower()
+        if re.search(r"\b" + re.escape(skill_lower) + r"\b", context_text):
+            verified.append(skill)
+        else:
+            eqs = SEMANTIC_EQUIVALENCE_MAP.get(skill, [])
+            if any(re.search(r"\b" + re.escape(e.lower()) + r"\b", context_text) for e in eqs):
+                verified.append(skill)
+
+    ratio = len(verified) / max(1, len(candidate_skills))
+    return verified, ratio
+
+
+def calculate_unified_ats_score(
+    text: str,
+    sections: dict[str, Any],
+    skills: list[str],
+    soft_skills: list[str],
+    contact_info: dict[str, Any],
+    jd_text: str | None = None,
+    target_role: str | None = None,
+) -> tuple[int, dict[str, Any], dict[str, Any]]:
+    """
+    Computes Deterministic ATS Resume Score (out of 100) across 9 user-calibrated pillars:
+    - Job Description Matching – 25% (25 pts)
+    - Technical Skills – 20% (20 pts)
+    - Experience / Internship – 10% (10 pts)
+    - Projects Relevance – 10% (10 pts)
+    - Keyword Optimization – 10% (10 pts)
+    - Resume Formatting – 10% (10 pts)
+    - Education & Certifications – 5% (5 pts)
+    - Achievements – 5% (5 pts)
+    - Grammar & Readability – 5% (5 pts)
+    Total = 100%
+    """
+    word_count = len(text.split())
+    text_lower = text.lower()
+    skills_count = len(skills)
+
+    # 1. Job Description Matching (25 pts)
+    matched_keywords: list[str] = []
+    missing_keywords: list[str] = []
+    related_skills: list[dict[str, str]] = []
+    required_skills: list[str] = []
+    preferred_skills: list[str] = []
+
+    if jd_text and jd_text.strip():
+        req_skills, pref_skills = extract_jd_requirements(jd_text)
+        required_skills = req_skills
+        preferred_skills = pref_skills
+
+        # Required match (up to 18 pts)
+        matched_req = []
+        for s in req_skills:
+            m, mtype = check_skill_match(skills, s, text_lower)
+            if m:
+                matched_req.append(s)
+                if s not in matched_keywords:
+                    matched_keywords.append(s)
+            else:
+                if s not in missing_keywords:
+                    missing_keywords.append(s)
+
+        req_ratio = len(matched_req) / max(1, len(req_skills))
+        req_score = int(round(req_ratio * 18))
+
+        # Preferred match (up to 7 pts)
+        matched_pref = []
+        for s in pref_skills:
+            m, mtype = check_skill_match(skills, s, text_lower)
+            if m:
+                matched_pref.append(s)
+                if s not in matched_keywords:
+                    matched_keywords.append(s)
+            else:
+                if s not in missing_keywords:
+                    missing_keywords.append(s)
+
+        pref_ratio = len(matched_pref) / max(1, len(pref_skills)) if pref_skills else 1.0
+        pref_score = int(round(pref_ratio * 7))
+
+        # Detect related alternative technologies
+        for missing in missing_keywords:
+            alternatives = RELATED_TECH_MAP.get(missing, {})
+            for alt, note in alternatives.items():
+                if alt in skills:
+                    related_skills.append({
+                        "required_skill": missing,
+                        "candidate_skill": alt,
+                        "relation_note": f"Candidate has {alt} ({note})",
+                    })
+                    break
+
+        jd_score = min(25, req_score + pref_score)
+        jd_feedback = (
+            f"Matched {len(matched_req)}/{len(req_skills)} required skills and {len(matched_pref)}/{len(pref_skills)} preferred skills from job description."
+            if req_skills else "Job description requirements verified."
+        )
+    else:
+        # General Mode: Benchmark against target role domain
+        domain_name = target_role or detect_primary_domain(skills)
+        benchmark_skills = TECH_DOMAINS.get(domain_name, TECH_DOMAINS["Python Backend Developer"])
+        required_skills = benchmark_skills[:5]
+        preferred_skills = benchmark_skills[5:]
+
+        matched_b = [s for s in benchmark_skills if s in skills]
+        matched_keywords = matched_b
+        missing_keywords = [s for s in benchmark_skills if s not in skills]
+        match_ratio = len(matched_b) / max(1, len(benchmark_skills))
+        jd_score = int(round(match_ratio * 25))
+        jd_score = max(8, min(25, jd_score))
+        jd_feedback = f"Matched {len(matched_b)}/{len(benchmark_skills)} benchmark core competencies for {domain_name}."
+
+    # 2. Technical Skills (20 pts)
+    if skills_count >= 10:
+        tech_breadth = 10
+    elif skills_count >= 7:
+        tech_breadth = 8
+    elif skills_count >= 5:
+        tech_breadth = 6
+    elif skills_count >= 3:
+        tech_breadth = 4
+    else:
+        tech_breadth = 2
+
+    has_categories = bool(re.search(r"\b(languages|frameworks|databases|tools|libraries|developer tools)\s*:", text_lower))
+    cat_score = 4 if has_categories else (2 if skills_count >= 5 else 1)
+
+    has_lang = any(s in skills for s in ["Python", "Java", "JavaScript", "TypeScript", "C++", "Go", "SQL"])
+    has_backend_or_fe = any(s in skills for s in ["FastAPI", "Django", "Flask", "React", "Next.js", "Node.js", "Spring Boot", "Express.js"])
+    has_db = any(s in skills for s in ["PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite"])
+    has_devops = any(s in skills for s in ["Docker", "Kubernetes", "AWS", "Git", "GitHub", "CI/CD", "Linux"])
+    layers_count = sum([has_lang, has_backend_or_fe, has_db, has_devops])
+    diversity_score = 3 if layers_count >= 3 else (2 if layers_count >= 2 else 1)
+
+    soft_score = 3 if len(soft_skills) >= 2 else (2 if len(soft_skills) >= 1 else 1)
+
+    tech_skills_score = min(20, tech_breadth + cat_score + diversity_score + soft_score)
+    tech_feedback = (
+        f"Detected {skills_count} verified technical skills across {layers_count} engineering layers."
+        if has_categories else f"Identified {skills_count} skills. Group into categorized headings (Languages, Frameworks, Databases, Tools) for optimal parsing."
+    )
+
+    # 3. Experience / Internship (10 pts)
+    has_internship = bool(sections.get("internships")) or "intern" in text_lower or "trainee" in text_lower
+    has_experience = bool(sections.get("experience")) or "experience" in text_lower
+    has_dates = bool(re.search(r"\b(?:20\d\d|19\d\d)\s*[-–]\s*(?:20\d\d|present)\b", text_lower))
+
+    if has_experience and has_internship:
+        exp_score = 10 if has_dates else 9
+    elif has_internship:
+        exp_score = 9 if has_dates else 8
+    elif has_experience:
+        exp_score = 8 if has_dates else 7
+    elif bool(sections.get("projects")):
+        exp_score = 6
+    else:
+        exp_score = 3
+    exp_score = min(10, exp_score)
+    exp_feedback = (
+        "Internship and practical work experience verified with chronological dates."
+        if has_internship and has_dates else "Highlight internships, industrial training, or project-based practical experience."
+    )
+
+    # 4. Projects Relevance (10 pts)
+    proj_text = sections.get("projects", "")
+    proj_score = 0
+    if bool(proj_text):
+        proj_score += 3
+        if any(s.lower() in proj_text.lower() for s in skills[:6]):
+            proj_score += 4
+        elif len(skills) > 0:
+            proj_score += 2
+        if "github.com" in proj_text.lower() or "http" in proj_text.lower():
+            proj_score += 3
+        else:
+            proj_score += 1
+    else:
+        proj_score = 2
+    proj_score = min(10, proj_score)
+    proj_feedback = (
+        "Projects clearly incorporate technical stack details and source code repository links."
+        if proj_score >= 8 else "Add GitHub repository URLs and explicit technology stacks to project descriptions."
+    )
+
+    # 5. Keyword Optimization (10 pts)
+    verified_skills, ctx_ratio = verify_contextual_skills(skills, sections)
+    ctx_pts = 5 if ctx_ratio >= 0.40 else (3 if ctx_ratio >= 0.20 else 1)
+
+    kw_density_pts = 5 if 0.02 <= (skills_count / max(1, word_count)) <= 0.08 else 3
+
+    stuffing_penalty = 0
+    stuffed_terms = []
+    for sk in skills[:10]:
+        count = len(re.findall(r"\b" + re.escape(sk.lower()) + r"\b", text_lower))
+        if count > 4:
+            stuffed_terms.append(sk)
+            stuffing_penalty += 1
+    stuffing_penalty = min(3, stuffing_penalty)
+
+    keyword_score = max(2, min(10, ctx_pts + kw_density_pts - stuffing_penalty))
+    kw_feedback = (
+        f"{len(verified_skills)} skills contextually verified in project & work descriptions."
+        if not stuffed_terms else f"Contextual evidence verified, but note repetition penalty on: {', '.join(stuffed_terms[:3])}."
+    )
+
+    # 6. Resume Formatting (10 pts)
+    formatting_score = 0
+    is_single_column = not re.search(r"[\t]{3,}", text)
+    formatting_score += 3 if is_single_column else 1
+
+    if 350 <= word_count <= 750:
+        formatting_score += 3
+    elif 250 <= word_count < 350 or 750 < word_count <= 950:
+        formatting_score += 2
+    else:
+        formatting_score += 1
+
+    clean_breaks = not re.search(r"\n{4,}", text)
+    formatting_score += 2 if clean_breaks else 1
+
+    bullet_count = len(re.findall(r"^[•\-*]\s+", text, re.MULTILINE))
+    formatting_score += 2 if bullet_count >= 4 else 1
+
+    formatting_score = min(10, formatting_score)
+    formatting_feedback = (
+        f"Single-column ATS format with clean {word_count} words and consistent bullet styling."
+        if formatting_score >= 8 else f"Word count ({word_count}) or formatting requires adjustment to fit single-page standard."
+    )
+
+    # 7. Education & Certifications (5 pts)
+    edu_text = sections.get("education", "").lower()
+    edu_score = 0
+    if any(deg in edu_text or deg in text_lower for deg in ["b.tech", "b.e", "bachelor", "computer science", "mca", "bca", "b.sc", "m.sc", "m.tech"]):
+        edu_score += 2
+    else:
+        edu_score += 1
+
+    if re.search(r"\b(?:20\d\d|19\d\d)\b", edu_text):
+        edu_score += 1
+
+    if re.search(r"\b(?:cgpa|gpa|percentage|%)\b", edu_text):
+        edu_score += 1
+
+    has_cert = bool(sections.get("certifications")) or bool(re.search(r"\b(?:certified|certification|aws|azure|gcp|hackerrank|coursera)\b", text_lower))
+    if has_cert:
+        edu_score += 1
+
+    edu_score = min(5, edu_score)
+    edu_feedback = (
+        "Degree, graduation dates, and certifications detected."
+        if edu_score >= 4 else "Include academic degree, graduation year, score/CGPA, and verified certifications."
+    )
+
+    # 8. Achievements (5 pts)
+    has_achieve = bool(sections.get("achievements")) or bool(re.search(r"\b(?:hackathon|rank|award|scholarship|merit|winner|finalist|leetcode|codechef)\b", text_lower))
+    achieve_score = 5 if (has_achieve and has_cert) else (4 if has_achieve else (2 if bool(sections.get("projects")) else 1))
+    achieve_score = min(5, achieve_score)
+    achieve_feedback = (
+        "Technical achievements, hackathons, or competitive rankings identified."
+        if achieve_score >= 4 else "Add competitive programming ranks, hackathon participation, or academic honors."
+    )
+
+    # 9. Grammar & Readability (5 pts)
+    action_verb_count = sum(1 for verb in STRONG_ACTION_VERBS if re.search(r"\b" + verb + r"\b", text, re.IGNORECASE))
+    weak_count = sum(1 for p in WEAK_PHRASES if re.search(r"\b" + re.escape(p) + r"\b", text, re.IGNORECASE))
+
+    has_typos = any(re.search(r"\b" + re.escape(wrong) + r"\b", text) for wrong in ["Javascript", "Github", "Mongodb", "Postgresql", "Nodejs"])
+
+    grammar_score = 0
+    if action_verb_count >= 5: grammar_score += 2
+    elif action_verb_count >= 2: grammar_score += 1
+
+    if weak_count <= 1: grammar_score += 1
+    if not has_typos: grammar_score += 2
+    else: grammar_score += 1
+
+    grammar_score = min(5, grammar_score)
+    grammar_feedback = (
+        f"Driven by {action_verb_count} high-impact action verbs with accurate technical capitalization."
+        if grammar_score >= 4 else f"Found {weak_count} passive phrases. Replace with action engineering verbs (Engineered, Architected, Optimized)."
+    )
+
+    # Total Deterministic ATS Score
+    total_score = (
+        jd_score + tech_skills_score + exp_score + proj_score +
+        keyword_score + formatting_score + edu_score + achieve_score + grammar_score
+    )
+    total_score = max(5, min(100, total_score))
+
+    breakdown = {
+        "job_description_matching": {
+            "score": jd_score,
+            "max": 25,
+            "weight_pct": 25,
+            "percentage": int(round((jd_score / 25) * 100)),
+            "label": "Job Description Matching",
+            "status": "High Match" if jd_score >= 20 else ("Moderate Match" if jd_score >= 13 else "Low Match"),
+            "feedback": jd_feedback,
+        },
+        "technical_skills": {
+            "score": tech_skills_score,
+            "max": 20,
+            "weight_pct": 20,
+            "percentage": int(round((tech_skills_score / 20) * 100)),
+            "label": "Technical Skills",
+            "status": "Strong Breadth" if tech_skills_score >= 16 else ("Moderate" if tech_skills_score >= 10 else "Needs Expansion"),
+            "feedback": tech_feedback,
+        },
+        "experience_internship": {
+            "score": exp_score,
+            "max": 10,
+            "weight_pct": 10,
+            "percentage": int(round((exp_score / 10) * 100)),
+            "label": "Experience / Internship",
+            "status": "Verified" if exp_score >= 8 else "Foundational",
+            "feedback": exp_feedback,
+        },
+        "projects_relevance": {
+            "score": proj_score,
+            "max": 10,
+            "weight_pct": 10,
+            "percentage": int(round((proj_score / 10) * 100)),
+            "label": "Projects Relevance",
+            "status": "Strongly Aligned" if proj_score >= 8 else "Needs Tech Detail",
+            "feedback": proj_feedback,
+        },
+        "keyword_optimization": {
+            "score": keyword_score,
+            "max": 10,
+            "weight_pct": 10,
+            "percentage": int(round((keyword_score / 10) * 100)),
+            "label": "Keyword Optimization",
+            "status": "Optimized" if keyword_score >= 8 else "Add Context",
+            "feedback": kw_feedback,
+        },
+        "resume_formatting": {
+            "score": formatting_score,
+            "max": 10,
+            "weight_pct": 10,
+            "percentage": int(round((formatting_score / 10) * 100)),
+            "label": "Resume Formatting",
+            "status": "ATS Compliant" if formatting_score >= 8 else "Needs Adjustment",
+            "feedback": formatting_feedback,
+        },
+        "education_certifications": {
+            "score": edu_score,
+            "max": 5,
+            "weight_pct": 5,
+            "percentage": int(round((edu_score / 5) * 100)),
+            "label": "Education & Certifications",
+            "status": "Verified" if edu_score >= 4 else "Add Credentials",
+            "feedback": edu_feedback,
+        },
+        "achievements": {
+            "score": achieve_score,
+            "max": 5,
+            "weight_pct": 5,
+            "percentage": int(round((achieve_score / 5) * 100)),
+            "label": "Achievements",
+            "status": "Verified" if achieve_score >= 4 else "Add Achievements",
+            "feedback": achieve_feedback,
+        },
+        "grammar_readability": {
+            "score": grammar_score,
+            "max": 5,
+            "weight_pct": 5,
+            "percentage": int(round((grammar_score / 5) * 100)),
+            "label": "Grammar & Readability",
+            "status": "High Impact" if grammar_score >= 4 else "Action Verbs Needed",
+            "feedback": grammar_feedback,
+        },
+    }
+
+    keyword_data = {
+        "required_skills": required_skills,
+        "preferred_skills": preferred_skills,
+        "matched_keywords": matched_keywords,
+        "missing_keywords": missing_keywords,
+        "related_skills": related_skills,
+        "verified_contextual_skills": verified_skills,
+    }
+
+    return total_score, breakdown, keyword_data
+
 
 def calculate_general_ats_score(
     text: str,
@@ -364,265 +877,18 @@ def calculate_general_ats_score(
     skills: list[str],
     soft_skills: list[str],
     contact_info: dict[str, Any],
+    target_role: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
-    """
-    Computes Deterministic General ATS Readiness Score (out of 100) based on 9 core pillars:
-    - Parsing compatibility: 20%
-    - Structure: 15%
-    - Skills presentation: 15%
-    - Experience and internships: 10%
-    - Projects: 10%
-    - Formatting: 15%
-    - Contact information: 5%
-    - Grammar: 5%
-    - Achievements: 5%
-    Total = 100%
-    """
-    word_count = len(text.split())
-    text_lower = text.lower()
-
-    # 1. Parsing Compatibility (20 pts)
-    # Check ASCII readability ratio, clean line breaks, and uncorrupted text stream
-    printable_chars = sum(1 for c in text if c.isprintable() or c in "\n\r\t")
-    total_chars = max(1, len(text))
-    readability_ratio = printable_chars / total_chars
-    parsing_score = 0
-    if readability_ratio > 0.95:
-        parsing_score += 10
-    elif readability_ratio > 0.85:
-        parsing_score += 6
-    else:
-        parsing_score += 2
-
-    if word_count >= 150:
-        parsing_score += 5
-    if not re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text):
-        parsing_score += 5
-    parsing_score = min(20, parsing_score)
-
-    # 2. Structure (15 pts) - Core ATS Sections
-    has_summary = bool(sections.get("summary"))
-    has_skills = bool(sections.get("skills"))
-    has_edu = bool(sections.get("education"))
-    has_proj = bool(sections.get("projects"))
-    has_exp = bool(sections.get("experience") or sections.get("internships"))
-
-    structure_score = 0
-    if has_summary: structure_score += 3
-    if has_skills: structure_score += 3
-    if has_edu: structure_score += 3
-    if has_proj: structure_score += 3
-    if has_exp: structure_score += 3
-    structure_score = min(15, structure_score)
-
-    # 3. Skills Presentation (15 pts)
-    # Rewards depth, diversity, and clean categorization
-    skills_count = len(skills)
-    skills_score = 0
-    if skills_count >= 10:
-        skills_score += 8
-    elif skills_count >= 6:
-        skills_score += 5
-    elif skills_count >= 3:
-        skills_score += 3
-
-    # Check categorization (e.g. "Languages:", "Frameworks:", "Databases:")
-    has_categories = bool(re.search(r"\b(languages|frameworks|databases|tools|libraries)\s*:", text_lower))
-    if has_categories:
-        skills_score += 4
-    elif skills_count >= 5:
-        skills_score += 2
-
-    if len(soft_skills) >= 2:
-        skills_score += 3
-    elif len(soft_skills) >= 1:
-        skills_score += 1
-    skills_score = min(15, skills_score)
-
-    # 4. Experience & Internships (10 pts)
-    # Fresher-friendly: recognizes internships, training, and open-source contributions
-    has_internship = bool(sections.get("internships")) or "intern" in text_lower or "trainee" in text_lower
-    has_experience = bool(sections.get("experience")) or "experience" in text_lower
-    exp_score = 0
-    if has_experience and has_internship:
-        exp_score = 10
-    elif has_internship:
-        exp_score = 9
-    elif has_experience:
-        exp_score = 8
-    elif bool(sections.get("projects")):
-        # Freshers with solid projects are awarded partial foundational experience credit
-        exp_score = 6
-    else:
-        exp_score = 3
-    exp_score = min(10, exp_score)
-
-    # 5. Projects (10 pts)
-    proj_text = sections.get("projects", "")
-    proj_score = 0
-    if bool(proj_text):
-        proj_score += 4
-        # Mentions technical tools or tech stack within projects
-        if any(s.lower() in proj_text.lower() for s in skills[:5]):
-            proj_score += 3
-        # Has live URLs / GitHub links inside projects
-        if "github.com" in proj_text.lower() or "http" in proj_text.lower():
-            proj_score += 3
-        else:
-            proj_score += 1
-    proj_score = min(10, proj_score)
-
-    # 6. Formatting & Length (15 pts)
-    formatting_score = 0
-    # Length: 350-800 words is ideal for freshers
-    if 300 <= word_count <= 800:
-        formatting_score += 7
-    elif 200 <= word_count < 300 or 800 < word_count <= 1000:
-        formatting_score += 4
-    else:
-        formatting_score += 2
-
-    # Check bullet points consistency
-    bullet_count = len(re.findall(r"^[•\-*]\s+", text, re.MULTILINE))
-    if bullet_count >= 5:
-        formatting_score += 4
-    elif bullet_count >= 2:
-        formatting_score += 2
-
-    # Layout readability (no unclosed brackets, clean lines)
-    if not re.search(r"[\t]{3,}", text):
-        formatting_score += 4
-    formatting_score = min(15, formatting_score)
-
-    # 7. Contact Information (5 pts)
-    contact_score = 0
-    if contact_info.get("has_email"): contact_score += 1
-    if contact_info.get("has_phone"): contact_score += 1
-    if contact_info.get("has_linkedin"): contact_score += 1.5
-    if contact_info.get("has_github") or contact_info.get("portfolio"): contact_score += 1.5
-    contact_score = min(5, int(round(contact_score)))
-
-    # 8. Grammar & Action Verbs (5 pts)
-    grammar_score = 0
-    action_verb_count = sum(1 for verb in STRONG_ACTION_VERBS if re.search(r"\b" + verb + r"\b", text, re.IGNORECASE))
-    if action_verb_count >= 5:
-        grammar_score += 3
-    elif action_verb_count >= 2:
-        grammar_score += 2
-    else:
-        grammar_score += 1
-
-    weak_count = sum(1 for p in WEAK_PHRASES if re.search(r"\b" + re.escape(p) + r"\b", text, re.IGNORECASE))
-    if weak_count <= 1:
-        grammar_score += 2
-    elif weak_count <= 3:
-        grammar_score += 1
-    grammar_score = min(5, grammar_score)
-
-    # 9. Achievements & Certifications (5 pts)
-    achieve_score = 0
-    has_cert = bool(sections.get("certifications")) or bool(re.search(r"\b(?:certified|certification|aws\s+certified|coursera|hackerrank|udemy)\b", text_lower))
-    has_achieve = bool(sections.get("achievements")) or bool(re.search(r"\b(?:hackathon|rank|award|scholarship|merit|winner|finalist)\b", text_lower))
-    if has_cert and has_achieve:
-        achieve_score = 5
-    elif has_cert or has_achieve:
-        achieve_score = 4
-    else:
-        achieve_score = 2
-    achieve_score = min(5, achieve_score)
-
-    # Total General ATS Score
-    total_score = (
-        parsing_score + structure_score + skills_score + exp_score +
-        proj_score + formatting_score + contact_score + grammar_score + achieve_score
+    score, breakdown, _ = calculate_unified_ats_score(
+        text=text,
+        sections=sections,
+        skills=skills,
+        soft_skills=soft_skills,
+        contact_info=contact_info,
+        jd_text=None,
+        target_role=target_role,
     )
-    total_score = max(5, min(100, total_score))
-
-    breakdown = {
-        "parsing_compatibility": {
-            "score": parsing_score,
-            "max": 20,
-            "weight_pct": 20,
-            "percentage": int(round((parsing_score / 20) * 100)),
-            "label": "ATS Parsing Compatibility",
-            "status": "Excellent" if parsing_score >= 16 else ("Good" if parsing_score >= 12 else "Needs Optimization"),
-            "feedback": "Text stream parses cleanly with high ASCII readability." if parsing_score >= 16 else "Ensure plain text encoding without complex multi-column tables.",
-        },
-        "structure": {
-            "score": structure_score,
-            "max": 15,
-            "weight_pct": 15,
-            "percentage": int(round((structure_score / 15) * 100)),
-            "label": "Resume Structure & Sections",
-            "status": "Complete" if structure_score >= 12 else "Incomplete Sections",
-            "feedback": "All core ATS sections (Summary, Skills, Projects, Education) detected." if structure_score >= 12 else "Add standard section headers (Summary, Skills, Projects, Education).",
-        },
-        "skills_presentation": {
-            "score": skills_score,
-            "max": 15,
-            "weight_pct": 15,
-            "percentage": int(round((skills_score / 15) * 100)),
-            "label": "Technical & Soft Skills Breadth",
-            "status": "Strong" if skills_score >= 12 else ("Moderate" if skills_score >= 8 else "Needs Expansion"),
-            "feedback": f"Detected {len(skills)} verified technical keywords." if skills_score >= 12 else "Group your skills into clear categories (Languages, Frameworks, Databases, Tools).",
-        },
-        "experience_internships": {
-            "score": exp_score,
-            "max": 10,
-            "weight_pct": 10,
-            "percentage": int(round((exp_score / 10) * 100)),
-            "label": "Experience & Internships",
-            "status": "Verified" if exp_score >= 8 else "Foundational",
-            "feedback": "Internships or practical experience present with bullet points." if exp_score >= 8 else "Highlight internships, academic roles, or open-source contributions.",
-        },
-        "projects": {
-            "score": proj_score,
-            "max": 10,
-            "weight_pct": 10,
-            "percentage": int(round((proj_score / 10) * 100)),
-            "label": "Academic & Personal Projects",
-            "status": "Excellent" if proj_score >= 8 else "Needs Tech Detail",
-            "feedback": "Project descriptions include stack details and code links." if proj_score >= 8 else "Add GitHub repository URLs and tech stacks to your projects.",
-        },
-        "formatting": {
-            "score": formatting_score,
-            "max": 15,
-            "weight_pct": 15,
-            "percentage": int(round((formatting_score / 15) * 100)),
-            "label": "Formatting & Length",
-            "status": "Ideal Length" if formatting_score >= 12 else "Adjust Length/Spacing",
-            "feedback": f"Resume is {word_count} words (well-balanced for 1-page fresher resume)." if formatting_score >= 12 else "Maintain between 350-750 words for freshers.",
-        },
-        "contact_info": {
-            "score": contact_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((contact_score / 5) * 100)),
-            "label": "Contact Information & Profiles",
-            "status": "Complete" if contact_score >= 4 else "Missing Links",
-            "feedback": "Includes email, phone, and professional GitHub/LinkedIn profiles." if contact_score >= 4 else "Add direct links to your GitHub and LinkedIn profiles.",
-        },
-        "grammar": {
-            "score": grammar_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((grammar_score / 5) * 100)),
-            "label": "Action Verbs & Grammar",
-            "status": "Strong Impact" if grammar_score >= 4 else "Use Stronger Verbs",
-            "feedback": "Active verbs (Engineered, Implemented, Deployed) drive bullet points." if grammar_score >= 4 else "Replace passive phrasing ('worked on') with active engineering verbs.",
-        },
-        "achievements": {
-            "score": achieve_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((achieve_score / 5) * 100)),
-            "label": "Certifications & Achievements",
-            "status": "Verified" if achieve_score >= 4 else "Add Credentials",
-            "feedback": "Industry certifications or academic achievements noted." if achieve_score >= 4 else "Include certifications (e.g. AWS, HackerRank) or academic hackathons.",
-        },
-    }
-
-    return total_score, breakdown
+    return score, breakdown
 
 
 def calculate_job_specific_score(
@@ -632,194 +898,18 @@ def calculate_job_specific_score(
     jd_text: str,
     target_role: str | None,
 ) -> tuple[int, dict[str, Any], dict[str, Any]]:
-    """
-    Computes Deterministic Job-Specific Compatibility Score (out of 100):
-    - Required skills: 25%
-    - Keywords: 20%
-    - Experience: 15%
-    - Projects: 15%
-    - Education: 10%
-    - Preferred skills: 5%
-    - Role-specific evidence: 5%
-    - Parsing compatibility: 5%
-    Total = 100%
-    """
-    text_lower = text.lower()
-    jd_lower = jd_text.lower()
-
-    # Extract skills mentioned in the Job Description
-    jd_tech, jd_soft = extract_skills_from_text(jd_text)
-
-    # Classify required vs preferred skills
-    # Required skills are typically in mandatory bullet sections or first mentions
-    required_skills = jd_tech[:6] if len(jd_tech) >= 6 else jd_tech
-    preferred_skills = jd_tech[6:10] if len(jd_tech) > 6 else []
-
-    # 1. Required Skills Match (25 pts)
-    matched_required = [s for s in required_skills if s in skills]
-    req_ratio = len(matched_required) / max(1, len(required_skills))
-    req_score = int(round(req_ratio * 25))
-
-    # 2. Keywords Overlap (20 pts)
-    matched_all = [s for s in jd_tech if s in skills]
-    kw_ratio = len(matched_all) / max(1, len(jd_tech))
-    kw_score = int(round(kw_ratio * 20))
-
-    # 3. Experience & Internships Relevance (15 pts)
-    # Check if candidate mentions relevant job skills in their experience or internship section
-    exp_text = f"{sections.get('experience', '')} {sections.get('internships', '')}".lower()
-    exp_overlap = sum(1 for s in jd_tech if s.lower() in exp_text)
-    if exp_overlap >= 3:
-        exp_score = 15
-    elif exp_overlap >= 1:
-        exp_score = 11
-    elif bool(exp_text):
-        exp_score = 8
-    else:
-        exp_score = 5
-
-    # 4. Projects Relevance (15 pts)
-    # Check if candidate projects implement the required job stack
-    proj_text = sections.get("projects", "").lower()
-    proj_overlap = sum(1 for s in jd_tech if s.lower() in proj_text)
-    if proj_overlap >= 3:
-        proj_score = 15
-    elif proj_overlap >= 1:
-        proj_score = 11
-    elif bool(proj_text):
-        proj_score = 8
-    else:
-        proj_score = 4
-
-    # 5. Education Relevance (10 pts)
-    edu_text = sections.get("education", "").lower()
-    edu_score = 0
-    if any(deg in edu_text for deg in ["b.tech", "b.e", "bachelor", "computer science", "information technology", "mca", "bca"]):
-        edu_score = 10
-    elif any(deg in text_lower for deg in ["b.tech", "b.e", "computer science", "engineering"]):
-        edu_score = 8
-    else:
-        edu_score = 6
-
-    # 6. Preferred Skills (5 pts)
-    matched_pref = [s for s in preferred_skills if s in skills]
-    pref_score = int(round((len(matched_pref) / max(1, len(preferred_skills))) * 5)) if preferred_skills else 4
-
-    # 7. Role-Specific Contextual Evidence (5 pts)
-    # Verify candidate has real project/experience sentences rather than just a comma-separated list
-    has_contextual_proof = any(s.lower() in f"{proj_text} {exp_text}" for s in matched_all)
-    evidence_score = 5 if has_contextual_proof else 2
-
-    # 8. Parsing Compatibility for this job (5 pts)
-    parse_score = 5 if len(text.split()) >= 250 else 3
-
-    total_job_score = (
-        req_score + kw_score + exp_score + proj_score +
-        edu_score + pref_score + evidence_score + parse_score
+    sections_clean = sections if sections else extract_resume_sections(text)
+    _, soft_skills = extract_skills_from_text(text)
+    contact_info = sections_clean.get("contact_info", {})
+    return calculate_unified_ats_score(
+        text=text,
+        sections=sections_clean,
+        skills=skills,
+        soft_skills=soft_skills,
+        contact_info=contact_info,
+        jd_text=jd_text,
+        target_role=target_role,
     )
-    total_job_score = max(5, min(100, total_job_score))
-
-    # Keyword Analysis Details (Matched, Related, Missing)
-    matched_keywords = matched_all
-    missing_keywords = [s for s in jd_tech if s not in skills]
-    related_skills: list[dict[str, str]] = []
-
-    # Detect partially matched / related technologies (e.g. MySQL for PostgreSQL)
-    for missing in missing_keywords:
-        alternatives = RELATED_TECH_MAP.get(missing, {})
-        for alt, note in alternatives.items():
-            if alt in skills:
-                related_skills.append({
-                    "required_skill": missing,
-                    "candidate_skill": alt,
-                    "relation_note": f"Candidate has {alt} ({note})",
-                })
-                break
-
-    keyword_data = {
-        "required_skills": required_skills,
-        "preferred_skills": preferred_skills,
-        "matched_keywords": matched_keywords,
-        "missing_keywords": missing_keywords,
-        "related_skills": related_skills,
-    }
-
-    job_breakdown = {
-        "required_skills": {
-            "score": req_score,
-            "max": 25,
-            "weight_pct": 25,
-            "percentage": int(round((req_score / 25) * 100)),
-            "label": "Required Skills Match",
-            "status": "High Match" if req_score >= 20 else ("Moderate" if req_score >= 12 else "Low Match"),
-            "feedback": f"Matched {len(matched_required)}/{len(required_skills)} mandatory requirements.",
-        },
-        "keywords": {
-            "score": kw_score,
-            "max": 20,
-            "weight_pct": 20,
-            "percentage": int(round((kw_score / 20) * 100)),
-            "label": "Technical Keywords Overlap",
-            "status": "High Overlap" if kw_score >= 15 else "Moderate Overlap",
-            "feedback": f"Overlaps with {len(matched_all)}/{len(jd_tech)} keywords from job description.",
-        },
-        "experience": {
-            "score": exp_score,
-            "max": 15,
-            "weight_pct": 15,
-            "percentage": int(round((exp_score / 15) * 100)),
-            "label": "Experience & Internships Relevance",
-            "status": "Relevant" if exp_score >= 11 else "Foundational",
-            "feedback": f"Found {exp_overlap} job-aligned technologies in work/internship history.",
-        },
-        "projects": {
-            "score": proj_score,
-            "max": 15,
-            "weight_pct": 15,
-            "percentage": int(round((proj_score / 15) * 100)),
-            "label": "Projects Alignment with Role",
-            "status": "Strongly Aligned" if proj_score >= 11 else "Moderate Alignment",
-            "feedback": f"Found {proj_overlap} relevant technologies implemented in candidate projects.",
-        },
-        "education": {
-            "score": edu_score,
-            "max": 10,
-            "weight_pct": 10,
-            "percentage": int(round((edu_score / 10) * 100)),
-            "label": "Educational Alignment",
-            "status": "Qualified" if edu_score >= 8 else "Needs Review",
-            "feedback": "Engineering or computer science qualification detected.",
-        },
-        "preferred_skills": {
-            "score": pref_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((pref_score / 5) * 100)),
-            "label": "Preferred & Bonus Skills",
-            "status": "Bonus Present" if pref_score >= 3 else "Optional",
-            "feedback": f"Candidate possesses {len(matched_pref)} preferred nice-to-have skills.",
-        },
-        "role_specific_evidence": {
-            "score": evidence_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((evidence_score / 5) * 100)),
-            "label": "Contextual Evidence in Bullets",
-            "status": "Verified Evidence" if evidence_score >= 4 else "List Only",
-            "feedback": "Demonstrates practical implementation in bullet points beyond flat list.",
-        },
-        "parsing_compatibility": {
-            "score": parse_score,
-            "max": 5,
-            "weight_pct": 5,
-            "percentage": int(round((parse_score / 5) * 100)),
-            "label": "Job ATS Parsing Fidelity",
-            "status": "Clean" if parse_score == 5 else "Adequate",
-            "feedback": "Resume formatting allows clean indexing by applicant tracking systems.",
-        },
-    }
-
-    return total_job_score, job_breakdown, keyword_data
 
 
 # -----------------------------------------------------------------------------
@@ -959,7 +1049,92 @@ def generate_prioritized_suggestions(
             "example": "Mention unit tests or integration tests written using PyTest or Jest.",
         })
 
-    # 4. Low Priority (Polish & Cleanliness)
+    # 4. Low Priority & 2026 Master Guide Quality Audits
+    # Quality Audit 1: Unprofessional email check
+    email = (contact_info.get("email") or "").lower()
+    if email and re.search(r"\b(gamer|cool|rockstar|baby|sexy|lover|ninja|007|devil|badboy|prince|angel|king)\b", email):
+        suggestions.append({
+            "priority": "critical",
+            "category": "Contact Information",
+            "title": "Replace Informal Email Address",
+            "details": "Informal emails (e.g. cool.gamer99@...) signal immaturity and lead to instant rejection.",
+            "example": "Use a clean format: firstname.lastname@gmail.com",
+        })
+        issues.append({
+            "category": "Contact Information",
+            "issue": f"Informal or slang email address detected: '{email}'.",
+            "severity": "critical",
+            "suggestion": "Switch to professional firstname.lastname@gmail.com format.",
+        })
+
+    # Quality Audit 2: Non-standard section headings
+    raw_text_lower = " ".join(str(v) for v in sections.values()).lower() if isinstance(sections, dict) else ""
+    non_std_headers = []
+    for bad_h, good_h in [
+        ("about me", "Professional Summary"),
+        ("my story", "Professional Summary"),
+        ("my journey", "Work Experience"),
+        ("where i've worked", "Work Experience"),
+        ("skill stack", "Technical Skills"),
+        ("my toolkit", "Technical Skills"),
+        ("superpowers", "Technical Skills"),
+        ("things i've built", "Projects"),
+        ("creations", "Projects"),
+        ("courses i've done", "Certifications"),
+        ("what i bring to the table", "Professional Summary"),
+    ]:
+        if re.search(r"\b" + re.escape(bad_h) + r"\b", raw_text_lower):
+            non_std_headers.append(f"'{bad_h.title()}' (rename to '{good_h}')")
+
+    if non_std_headers:
+        suggestions.append({
+            "priority": "high",
+            "category": "Structure",
+            "title": "Use Standard ATS Section Headings",
+            "details": f"Creative or non-standard headings break automated parsing: {', '.join(non_std_headers[:2])}.",
+            "example": "Use standard names: Professional Summary, Technical Skills, Work Experience, Projects, Education, Certifications.",
+        })
+        issues.append({
+            "category": "Structure",
+            "issue": f"Non-standard headings found: {', '.join(non_std_headers[:2])}.",
+            "severity": "high",
+            "suggestion": "Standardize headings so ATS parsers properly categorize sections.",
+        })
+
+    # Quality Audit 3: Technical typos
+    tech_typos = []
+    for typo, correction in [
+        (r"\bjava\s+script\b", "JavaScript"),
+        (r"\bgit\s+hub\b", "GitHub"),
+        (r"\bmongo\s+db\b", "MongoDB"),
+        (r"\bpostgre\s+sql\b", "PostgreSQL"),
+        (r"\brest\s+api's\b", "REST APIs"),
+    ]:
+        if re.search(typo, raw_text_lower, re.I):
+            tech_typos.append(correction)
+
+    if tech_typos:
+        issues.append({
+            "category": "Spelling & Accuracy",
+            "issue": f"Informal spelling or typo in technical terms: {', '.join(tech_typos)}.",
+            "severity": "medium",
+            "suggestion": f"Use precise industry capitalization: {', '.join(tech_typos)}.",
+        })
+
+    # Quality Audit 4: Keyword stuffing check
+    overused = []
+    for sk in skills[:15]:
+        count = len(re.findall(r"\b" + re.escape(sk.lower()) + r"\b", raw_text_lower))
+        if count > 4:
+            overused.append(f"{sk} ({count}x)")
+    if overused:
+        issues.append({
+            "category": "Keywords",
+            "issue": f"Possible keyword stuffing detected: {', '.join(overused[:3])}.",
+            "severity": "medium",
+            "suggestion": "2026 Master Guide rule: Each keyword should appear naturally in 2–4 places maximum across Summary, Skills, and Bullets.",
+        })
+
     suggestions.append({
         "priority": "low",
         "category": "Categorization",
@@ -1428,13 +1603,16 @@ def analyze_resume_text(
         )
 
     methodology_info = (
-        "Deterministic Scoring Engine v2.0: General score combines Parsing (20%), Structure (15%), "
-        "Skills (15%), Experience & Internships (10%), Projects (10%), Formatting (15%), Contact (5%), "
-        "Grammar (5%), and Achievements (5%). Does not claim to reproduce proprietary third-party ATS scores."
+        "Deterministic 9-Pillar ATS Scoring Engine: Evaluates Job Description Matching (25%), "
+        "Technical Skills (20%), Experience & Internships (10%), Projects Relevance (10%), "
+        "Keyword Optimization (10%), Resume Formatting (10%), Education & Certifications (5%), "
+        "Achievements (5%), and Grammar & Readability (5%). Total = 100%."
     )
 
+    primary_score = job_match_score if (effective_jd and job_match_score is not None) else general_ats_score
+
     return {
-        "ats_score": general_ats_score,
+        "ats_score": primary_score,
         "job_match_score": job_match_score,
         "analysis_mode": analysis_mode,
         "role_target": effective_role,
@@ -1448,7 +1626,7 @@ def analyze_resume_text(
         "preferred_skills": preferred_skills,
         "general_breakdown": general_breakdown,
         "job_breakdown": job_breakdown,
-        "category_scores": general_breakdown,  # Backward compatibility
+        "category_scores": job_breakdown if (effective_jd and job_breakdown) else general_breakdown,  # Backward compatibility
         "strengths": strengths,
         "weaknesses": weaknesses,
         "improvement_suggestions": flat_suggestions,

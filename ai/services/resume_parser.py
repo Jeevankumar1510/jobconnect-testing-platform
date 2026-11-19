@@ -153,8 +153,17 @@ def clean_and_normalize_resume_text(text: str) -> str:
     if not text:
         return ""
 
-    # 1. Remove non-printable control characters and PDF binary stream artifacts
-    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]", "", text)
+    # 1. Remove non-printable control characters, CID artifacts, and PDF binary stream artifacts
+    cleaned = re.sub(r"\(cid:\d+\)", "", text)
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]", "", cleaned)
+
+    # Normalize weird unicode bullets and decorative dingbats to standard bullet
+    cleaned = re.sub(r"[\u2022\u25cf\u25aa\u25cb\u2043\u2219\uf0b7\uf0a7\u25b8\u27a4]", " • ", cleaned)
+    cleaned = re.sub(r"(?:â€¢|â€“|â€”)", " • ", cleaned)
+    cleaned = re.sub(r"(?:•\s*){2,}", "• ", cleaned)
+
+    # Rejoin hyphenated words split across line breaks (e.g. "devel-\noper" -> "developer")
+    cleaned = re.sub(r"(\b[a-zA-Z]{3,})-\s*\n\s*([a-zA-Z]{3,}\b)", r"\1\2", cleaned)
 
     # Filter out garbage lines that have high symbol ratio or font table junk
     good_lines: list[str] = []
@@ -167,9 +176,9 @@ def clean_and_normalize_resume_text(text: str) -> str:
         # Check symbol / punctuation noise
         alpha_count = sum(1 for c in stripped if c.isalnum())
         total_len = len(stripped)
-        if total_len > 8 and (alpha_count / total_len) < 0.35:
+        if total_len > 8 and (alpha_count / total_len) < 0.30:
             continue
-        if any(junk in stripped for junk in ["+++", "@@", "###", "&&&", "}}*", "CX@", "@ U"]):
+        if any(junk in stripped for junk in ["+++", "@@", "###", "&&&", "}}*", "CX@", "@ U", "endstream", "/Filter"]):
             continue
         good_lines.append(stripped)
 
@@ -301,7 +310,20 @@ def clean_and_normalize_resume_text(text: str) -> str:
     for pat, rep in section_headers_map:
         normalized = re.sub(pat, rep, normalized)
 
-    # 7. Clean excess blank lines
+    # 7. Deduplicate consecutive duplicate words caused by double-rendered PDF text layers (e.g. 'Python Python')
+    # Preserves intentional double words like 'that that' or 'had had' if any, but eliminates font shadow echoes
+    def _dedup_consecutive(match: re.Match) -> str:
+        word = match.group(1)
+        # Only deduplicate words with 3+ characters to avoid false matches
+        if len(word) >= 3 and word.lower() not in {"that", "had"}:
+            return word
+        return match.group(0)
+
+    normalized = re.sub(r"\b([A-Za-z0-9+#.-]{3,})\s+\1\b", _dedup_consecutive, normalized, flags=re.IGNORECASE)
+
+    # 8. Clean redundant symbol divider lines and excess blank lines
+    normalized = re.sub(r"(?:^|\s)[=\-_*~#]{3,}(?:\s|$)", " ", normalized)
+    normalized = re.sub(r"^[=\-_*~#]{3,}\s*$", "", normalized, flags=re.MULTILINE)
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n\s*\n+", "\n\n", normalized)
     return normalized.strip()

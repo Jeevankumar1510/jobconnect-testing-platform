@@ -50,6 +50,8 @@ from resume_studio.resume_importer import import_and_extract_resume
 from resume_studio.ai_assistant import (
     improve_bullet_point,
     improve_career_objective,
+    improve_project_description,
+    improve_internship_description,
     tailor_resume_to_job,
 )
 
@@ -260,6 +262,18 @@ def ai_improve_text(payload: AIImproveTextRequest):
                 target_role=payload.target_role,
                 skills_summary=payload.context_stack,
             )
+        elif payload.field_type in ("project", "project_description", "projects"):
+            return improve_project_description(
+                project_text=payload.current_text,
+                target_role=payload.target_role,
+                tech_stack=payload.context_stack,
+            )
+        elif payload.field_type in ("internship", "internships", "experience", "work_experience"):
+            return improve_internship_description(
+                internship_text=payload.current_text,
+                target_role=payload.target_role,
+                context_stack=payload.context_stack,
+            )
         else:
             return improve_bullet_point(
                 bullet=payload.current_text,
@@ -355,26 +369,32 @@ def check_ats_score(
     ]
 
     try:
-        from services.ats_engine import ATSEngine
+        from ai.services.ats_analyzer import analyze_resume_text
+
         jd_text = payload.job_description_text if payload else None
+        target_job = None
         if payload and payload.job_id:
-            job = db.query(Job).filter(Job.id == payload.job_id).first()
-            if job and job.description:
-                jd_text = job.description
+            target_job = db.query(Job).filter(Job.id == payload.job_id).first()
 
-        if jd_text:
-            score_res = ATSEngine.calculate_job_match_score(resume_text=plain_text, job_description=jd_text)
-        else:
-            score_res = ATSEngine.calculate_general_score(resume_text=plain_text)
+        analysis_res = analyze_resume_text(
+            resume_text=plain_text,
+            target_job=target_job,
+            target_role=resume_dto.target_role or "Software Engineer",
+            job_description_text=jd_text,
+        )
 
-        if hasattr(score_res, "overall_score"):
-            ats_score = int(score_res.overall_score)
-            category_scores = getattr(score_res, "category_scores", category_scores)
-            suggestions = getattr(score_res, "suggestions", suggestions)
-            matched_keywords = getattr(score_res, "matched_keywords", [])
-            missing_keywords = getattr(score_res, "missing_keywords", [])
-    except Exception:
-        pass
+        ats_score = int(analysis_res.get("ats_score", 88))
+        if "general_breakdown" in analysis_res:
+            category_scores = analysis_res["general_breakdown"]
+        elif "category_scores" in analysis_res:
+            category_scores = analysis_res["category_scores"]
+        matched_keywords = analysis_res.get("matched_job_skills", []) or analysis_res.get("skills", [])
+        missing_keywords = analysis_res.get("missing_skills", [])
+        raw_sugg = analysis_res.get("priority_suggestions", [])
+        if raw_sugg:
+            suggestions = [s.get("title", "") + ": " + s.get("details", "") if isinstance(s, dict) else str(s) for s in raw_sugg]
+    except Exception as exc:
+        logger.error("Error evaluating ATS score in Resume Studio: %s", exc, exc_info=True)
 
     # Update in db
     update_req = ResumeUpdateRequest(ats_score=ats_score)

@@ -20,8 +20,27 @@ def render_template_docx(
     esc = html_lib.escape
     cfg = custom_config or data.formatting_config
 
-    font_family = getattr(cfg, "font_family", "Calibri") or "Calibri"
-    accent = getattr(cfg, "accent_color", "#0f172a") or "#0f172a"
+    template_defaults = {
+        "ats-technical-pro": ("Calibri", "#0f172a"),
+        "ats-professional": ("Calibri", "#0f172a"),
+        "modern-minimal": ("Arial", "#111827"),
+        "minimal-ats": ("Arial", "#111827"),
+        "software-engineer": ("Arial", "#2563eb"),
+        "aiml-engineer": ("Arial", "#4f46e5"),
+        "data-analyst": ("Calibri", "#0284c7"),
+        "cloud-devops-engineer": ("Arial", "#0d9488"),
+        "cloud-devops": ("Arial", "#0d9488"),
+        "fresher-starter": ("Calibri", "#0f766e"),
+        "fresher": ("Calibri", "#0f766e"),
+        "experienced-professional": ("Georgia", "#1e293b"),
+        "experienced-pro": ("Georgia", "#1e293b"),
+        "one-page-resume": ("Calibri", "#0f172a"),
+        "faang-compact": ("Calibri", "#0f172a"),
+    }
+    t_font, t_accent = template_defaults.get(template_id, ("Calibri", "#0f172a"))
+
+    font_family = getattr(cfg, "font_family", None) or t_font or "Calibri"
+    accent = getattr(cfg, "accent_color", None) or t_accent or "#0f172a"
     accent_hex = accent.lstrip("#").upper()
     if len(accent_hex) != 6:
         accent_hex = "0F172A"
@@ -117,7 +136,7 @@ def render_template_docx(
     # 2. Career Objective
     if data.career_objective:
         p_elements.append(make_p("CAREER OBJECTIVE", is_bold=True, font_size_half_pt=heading_sz, is_heading=True, color=accent_hex))
-        p_elements.append(make_p(data.career_objective, font_size_half_pt=body_sz, align=body_align, color="334155", space_after=para_after_dxa))
+        p_elements.append(make_p(data.career_objective, font_size_half_pt=body_sz, align=body_align, color="111827", space_after=para_after_dxa))
 
     # 3. Technical Skills
     if data.technical_skills:
@@ -125,18 +144,18 @@ def render_template_docx(
         for sk in data.technical_skills:
             if sk.skills:
                 p_elements.append(
-                    make_p(f"• {sk.category}: {', '.join(sk.skills)}", font_size_half_pt=body_sz, align=body_align, color="334155", space_after=20)
+                    make_p(f"• {sk.category}: {', '.join(sk.skills)}", font_size_half_pt=body_sz, align=body_align, color="111827", space_after=20)
                 )
 
-    # 4. Internships & Experience
+    # 4. Professional Experience / Internships
     if data.internships:
-        p_elements.append(make_p("INTERNSHIP EXPERIENCE", is_bold=True, font_size_half_pt=heading_sz, is_heading=True, color=accent_hex))
+        p_elements.append(make_p("PROFESSIONAL EXPERIENCE / INTERNSHIP", is_bold=True, font_size_half_pt=heading_sz, is_heading=True, color=accent_hex))
         for it in data.internships:
             header = f"{it.role}" + (f" | {it.organization}" if it.organization else "") + (f" ({it.duration})" if it.duration else "")
             p_elements.append(make_p(header, is_bold=True, font_size_half_pt=proj_sz, align=body_align, color="0F172A", space_after=20))
             for b in it.bullets:
                 if b.strip():
-                    p_elements.append(make_p(f"• {b.strip()}", bullet=True, font_size_half_pt=body_sz, align=body_align, color="334155"))
+                    p_elements.append(make_p(f"• {b.strip()}", bullet=True, font_size_half_pt=body_sz, align=body_align, color="111827"))
 
     # 5. Projects
     if data.projects:
@@ -146,7 +165,7 @@ def render_template_docx(
             p_elements.append(make_p(header, is_bold=True, font_size_half_pt=proj_sz, align=body_align, color="0F172A", space_after=20))
             for b in pr.bullets:
                 if b.strip():
-                    p_elements.append(make_p(f"• {b.strip()}", bullet=True, font_size_half_pt=body_sz, align=body_align, color="334155"))
+                    p_elements.append(make_p(f"• {b.strip()}", bullet=True, font_size_half_pt=body_sz, align=body_align, color="111827"))
 
     # 6. Education
     if data.education:
@@ -160,7 +179,7 @@ def render_template_docx(
         p_elements.append(make_p("CERTIFICATIONS", is_bold=True, font_size_half_pt=heading_sz, is_heading=True, color=accent_hex))
         for cr in data.certifications:
             org = f" ({cr.organization})" if cr.organization else ""
-            p_elements.append(make_p(f"• {cr.name}{org}", font_size_half_pt=body_sz, align=body_align, color="334155", space_after=20))
+            p_elements.append(make_p(f"• {cr.name}{org}", font_size_half_pt=body_sz, align=body_align, color="111827", space_after=20))
 
     # Package into OpenXML ZIP archive
     body_xml = "".join(p_elements)

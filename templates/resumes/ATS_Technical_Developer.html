@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ full_name }} - Technical Resume</title>
+  <style>
+    /* 1. Page Layout: A4, 0.5" Top/Bottom, 0.65" Left/Right, Single Column */
+    @page {
+      size: A4 portrait;
+      margin: 0.5in 0.65in 0.5in 0.65in;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Calibri', 'Arial', sans-serif;
+      font-size: 10pt;
+      line-height: 1.08;
+      color: #111827; /* Rich black text */
+      background: #ffffff;
+      text-align: left;
+    }
+    .resume-wrapper {
+      width: 100%;
+      max-width: 8.27in;
+      margin: 0 auto;
+    }
+
+    /* 2. Header & Contact Information */
+    .header-section {
+      text-align: center;
+      margin-bottom: 4pt;
+    }
+    .candidate-name {
+      font-size: 21pt;
+      font-weight: 700;
+      color: #0f172a; /* Dark navy accent */
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      line-height: 1.15;
+    }
+    .candidate-headline {
+      font-size: 10.5pt;
+      font-weight: 600;
+      color: #1e3a8a; /* Subtle navy accent */
+      letter-spacing: 0.02em;
+      margin-top: 2pt;
+      margin-bottom: 3pt;
+    }
+    .contact-line {
+      font-size: 9.5pt;
+      color: #334155;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+      margin-top: 2pt;
+    }
+    .contact-line .bullet-sep {
+      color: #94a3b8;
+    }
+
+    /* 3. Section Headings: 12.5pt bold with subtle dark navy bottom border */
+    .section-block {
+      margin-top: 9pt;
+      margin-bottom: 4pt;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .section-title {
+      font-size: 12.5pt;
+      font-weight: 700;
+      color: #0f172a; /* Dark navy */
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1.2px solid #0f172a;
+      padding-bottom: 1.5pt;
+      margin-bottom: 4pt;
+      text-align: left;
+    }
+
+    /* 4. Section Bodies & Paragraphs: 2–4pt paragraph spacing */
+    .body-paragraph {
+      font-size: 10pt;
+      line-height: 1.08;
+      color: #111827;
+      margin-bottom: 3pt;
+      text-align: justify;
+    }
+
+    /* 5. Technical Skills Matrix */
+    .skills-category-line {
+      font-size: 10pt;
+      line-height: 1.12;
+      color: #111827;
+      margin-bottom: 2.5pt;
+    }
+    .skills-label {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    /* 6. Experience & Project Item Headers (Dual Aligned: Left Title, Right Date/Location) */
+    .entry-container {
+      margin-bottom: 4.5pt;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .entry-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 10.5pt;
+      margin-bottom: 1.5pt;
+    }
+    .entry-title {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .entry-company-org {
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .entry-meta-right {
+      font-size: 9.5pt;
+      font-weight: 500;
+      color: #475569;
+      white-space: nowrap;
+    }
+
+    /* 7. Bullet Lists & Indentation: 0.18 inch margin indent */
+    .entry-bullets-list {
+      list-style-type: disc;
+      margin-left: 0.18in;
+      padding-left: 0;
+      margin-top: 1.5pt;
+      margin-bottom: 3pt;
+    }
+    .entry-bullets-list li {
+      font-size: 10pt;
+      line-height: 1.08;
+      color: #111827;
+      margin-bottom: 2pt;
+      text-align: left;
+    }
+    .entry-bullets-list li strong {
+      color: #0f172a;
+    }
+
+    /* Print styles */
+    @media print {
+      body {
+        background: transparent;
+      }
+      .resume-wrapper {
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="resume-wrapper">
+
+    <!-- HEADER -->
+    <div class="header-section">
+      <h1 class="candidate-name">{{ full_name }}</h1>
+      <div class="candidate-headline">{{ headline }}</div>
+      <div class="contact-line">
+        <span>{{ location }}</span>
+        <span class="bullet-sep">•</span>
+        <span>{{ phone }}</span>
+        <span class="bullet-sep">•</span>
+        <span>{{ email }}</span>
+        <span class="bullet-sep">•</span>
+        <span>{{ linkedin_url }}</span>
+        <span class="bullet-sep">•</span>
+        <span>{{ github_url }}</span>
+      </div>
+    </div>
+
+    <!-- CAREER OBJECTIVE -->
+    <div class="section-block">
+      <div class="section-title">CAREER OBJECTIVE</div>
+      <p class="body-paragraph">{{ career_objective }}</p>
+    </div>
+
+    <!-- TECHNICAL SKILLS -->
+    <div class="section-block">
+      <div class="section-title">TECHNICAL SKILLS</div>
+      <div class="skills-category-line">
+        <span class="skills-label">Languages:</span> {{ skills_languages }}
+      </div>
+      <div class="skills-category-line">
+        <span class="skills-label">Backend & Frameworks:</span> {{ skills_frameworks }}
+      </div>
+      <div class="skills-category-line">
+        <span class="skills-label">AI & Generative AI:</span> {{ skills_ai }}
+      </div>
+      <div class="skills-category-line">
+        <span class="skills-label">Cloud, DevOps & Testing:</span> {{ skills_devops }}
+      </div>
+      <div class="skills-category-line">
+        <span class="skills-label">Databases:</span> {{ skills_databases }}
+      </div>
+    </div>
+
+    <!-- PROFESSIONAL EXPERIENCE / INTERNSHIP -->
+    <div class="section-block">
+      <div class="section-title">PROFESSIONAL EXPERIENCE / INTERNSHIP</div>
+      {{ experience_entries }}
+    </div>
+
+    <!-- PROJECTS -->
+    <div class="section-block">
+      <div class="section-title">PROJECTS</div>
+      {{ project_entries }}
+    </div>
+
+    <!-- CERTIFICATIONS -->
+    <div class="section-block">
+      <div class="section-title">CERTIFICATIONS</div>
+      {{ certification_entries }}
+    </div>
+
+    <!-- EDUCATION -->
+    <div class="section-block">
+      <div class="section-title">EDUCATION</div>
+      {{ education_entries }}
+    </div>
+
+  </div>
+</body>
+</html>

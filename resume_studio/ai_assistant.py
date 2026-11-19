@@ -13,11 +13,16 @@ from resume_studio.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Weak/passive phrasing mapped to dynamic, natural engineering verbs
+# Weak/passive phrasing mapped to dynamic, natural engineering verbs from 2026 ATS Master Guide
 WEAK_VERBS_MAP = [
     (r"(?i)\bworked on\b", "Spearheaded the implementation of", "Replaced passive 'worked on' with active engineering ownership."),
     (r"(?i)\bresponsible for\b", "Led the execution and delivery of", "Converted responsibility statement into proactive technical ownership."),
     (r"(?i)\bhelped with\b|\bassisted with\b|\bassisted in\b", "Collaborated to implement and deliver", "Upgraded assisting phrasing to technical collaboration."),
+    (r"(?i)\bdid coding in\b|\bcoded in\b", "Engineered scalable application modules using", "Upgraded basic coding reference to production engineering."),
+    (r"(?i)\bfixed bugs\b|\bfixing bugs\b", "Diagnosed and resolved critical software defects", "Replaced informal 'fixed bugs' with precise defect resolution."),
+    (r"(?i)\battended daily meetings\b", "Participated in daily Agile/Scrum sprints and code reviews", "Converted meeting attendance into Agile collaboration."),
+    (r"(?i)\bhelped seniors\b", "Partnered with senior engineers to accelerate feature delivery", "Converted assisting to cross-functional engineering velocity."),
+    (r"(?i)\bmade a website\b|\bmade a project\b", "Engineered and deployed an end-to-end web platform", "Elevated generic project phrasing to production deployment."),
     (r"(?i)\btasks included\b", "Delivered core technical milestones including", "Shifted focus from mundane tasks to tangible milestones."),
     (r"(?i)\bknowledge of\b|\bfamiliar with\b", "Applied hands-on proficiency in", "Linked theoretical awareness to practical execution."),
     (r"(?i)\bsupported\b", "Streamlined and optimized", "Elevated supportive tasks to optimization outcomes."),
@@ -51,6 +56,52 @@ def sanitize_leading_verbs(text: str) -> str:
     t = re.sub(r"(?i)\barchitected and (?:developed|implemented|delivered)\b", "Engineered and deployed", t)
     t = re.sub(r"(?i)^architected\b", "Engineered", t)
     return t
+
+
+def call_chatgpt_api(prompt: str, system_context: str) -> str | None:
+    """
+    Calls OpenAI / ChatGPT API (gpt-4o-mini or gpt-3.5-turbo) via REST if OPENAI_API_KEY is configured.
+    Includes a 6-second timeout.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    url = "https://api.openai.com/v1/chat/completions"
+    payload = {
+        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "messages": [
+            {"role": "system", "content": system_context},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 300,
+    }
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            choices = res_data.get("choices", [])
+            if choices:
+                text_part = choices[0].get("message", {}).get("content")
+                if text_part:
+                    cleaned = text_part.strip().strip('"').strip("'")
+                    cleaned = re.sub(r"(?i)^(?:here is|improved|polished|revised|summary|bullet):\s*", "", cleaned).strip()
+                    cleaned = sanitize_leading_verbs(cleaned)
+                    if cleaned:
+                        return cleaned
+    except Exception as exc:
+        logger.warning("ChatGPT API call skipped or timed out: %s", exc)
+    return None
 
 
 def call_gemini_api(prompt: str, system_context: str) -> str | None:
@@ -92,6 +143,24 @@ def call_gemini_api(prompt: str, system_context: str) -> str | None:
     return None
 
 
+def call_ai_agent(prompt: str, system_context: str) -> tuple[str | None, str]:
+    """
+    Tries ChatGPT first if OPENAI_API_KEY is configured, then Gemini if GEMINI_API_KEY is configured.
+    Returns (result_text, provider_name).
+    """
+    if os.environ.get("OPENAI_API_KEY"):
+        res = call_chatgpt_api(prompt, system_context)
+        if res:
+            return res, "ChatGPT"
+
+    if os.environ.get("GEMINI_API_KEY"):
+        res = call_gemini_api(prompt, system_context)
+        if res:
+            return res, "Google Gemini"
+
+    return None, "2026 ATS Master Guide Engine"
+
+
 def improve_bullet_point(
     bullet: str,
     target_role: str | None = None,
@@ -110,29 +179,31 @@ def improve_bullet_point(
             action_verbs_used=["Delivered"],
         )
 
-    # 1. Attempt Gemini LLM polish if API key is active
-    gemini_prompt = (
+    # 1. Attempt AI Agent polish (ChatGPT or Gemini) if API key is active
+    ai_prompt = (
+        f"Act as a professional resume designer and ATS optimization specialist following the 2026 ATS Resume Master Guide.\n"
         f"Transform this resume bullet point into an impactful, ATS-friendly single-sentence bullet "
         f"following the Google X-Y-Z formula (Accomplished [X] measured by [Y] by doing [Z]).\n"
         f"Target Role: {target_role or 'Software Engineer'}\n"
         f"Tech Context: {context_stack or 'None'}\n"
         f"Original Bullet: {clean_bullet}\n"
-        f"Rules:\n"
-        f"- Do NOT use the words 'Architected' or 'Architectured', and do NOT repeat 'Developed'.\n"
-        f"- Use varied, precise, natural action verbs like Automated, Streamlined, Orchestrated, Configured, "
-        f"Accelerated, Implemented, Standardized, Validated, Constructed, or Integrated.\n"
-        f"- Do NOT invent fake numbers or unmentioned tools. Return ONLY the polished single bullet sentence."
+        f"Rules from 2026 ATS Master Guide:\n"
+        f"- Start with a high-impact action verb from the 7 categories: Architected, Engineered, Developed, Implemented, Deployed, Accelerated, Optimized, Streamlined, Spearheaded, Orchestrated, Diagnosed, Delivered.\n"
+        f"- Never use passive phrases: 'worked on', 'responsible for', 'helped with', 'did coding in', 'tasks included'.\n"
+        f"- Format as: [Action Verb] + [What you built/improved] + [How/Tech used] + [Quantified impact (% latency reduction, users, throughput, error reduction, etc.)].\n"
+        f"- Strictly maintain exact technical term capitalization (JavaScript, TypeScript, React.js, Node.js, FastAPI, Django, PostgreSQL, MongoDB, Docker, Kubernetes, AWS, PyTest).\n"
+        f"- Do NOT invent fake companies or degrees. Return ONLY the polished single bullet sentence."
     )
-    gemini_res = call_gemini_api(
-        prompt=gemini_prompt,
-        system_context="You are a principal technical recruiter optimizing candidate resumes for top tech companies."
+    ai_res, provider = call_ai_agent(
+        prompt=ai_prompt,
+        system_context="You are a principal technical recruiter optimizing candidate resumes for top tech companies using the 2026 ATS Master Guide."
     )
-    if gemini_res and len(gemini_res) > 10 and gemini_res != clean_bullet:
-        first_word = gemini_res.split()[0].rstrip(",.:")
+    if ai_res and len(ai_res) > 10 and ai_res != clean_bullet:
+        first_word = ai_res.split()[0].rstrip(",.:")
         return AIImproveTextResponse(
             original=clean_bullet,
-            improved=gemini_res,
-            explanation="Polished using Google X-Y-Z impact formula powered by Gemini AI.",
+            improved=ai_res,
+            explanation=f"Polished using Google X-Y-Z formula powered by {provider}.",
             action_verbs_used=[first_word],
         )
 
@@ -322,27 +393,28 @@ def improve_career_objective(
     # Check for quantitative achievements
     quant_match = re.search(r"(\d+\+?\s+test cases|\d+%\s+pass rate|\d+%\s+efficiency)", clean_obj, re.IGNORECASE)
 
-    # 1. Attempt Gemini LLM polish if API key is active
-    gemini_prompt = (
-        f"Transform this candidate's career objective / professional summary into a high-impact, "
-        f"ATS-optimized 2-3 sentence executive profile for the target role: '{role}'.\n"
+    # 1. Attempt AI Agent polish (ChatGPT or Gemini) if API key is active
+    ai_prompt = (
+        f"Act as a professional resume designer and ATS optimization specialist following the 2026 ATS Resume Master Guide.\n"
+        f"Transform this candidate's Professional Summary / Career Objective into a high-impact 3-4 line elevator pitch for the target role: '{role}'.\n"
         f"Candidate Text: {clean_obj}\n"
         f"Known Skills: {', '.join(detected_tech[:6])}\n"
         f"Known Certifications: {', '.join(cert_mentions)}\n"
-        f"Rules:\n"
-        f"- Do NOT use 'Architected' or 'Architectured', and avoid repeating 'Developed'.\n"
-        f"- Use varied, punchy phrasing focused on technical ownership, quality assurance, and engineering delivery.\n"
-        f"- Do NOT invent fake companies, years of experience, or unmentioned skills. Return ONLY the 2-3 sentence summary."
+        f"Rules from 2026 ATS Master Guide:\n"
+        f"1. Structure: Lead with professional identity (role + tech stack), highlight top 2-3 demonstrated skills with proof/metrics, and state clear value offered.\n"
+        f"2. Banned Clichés: Never use generic phrases like 'hardworking and passionate graduate seeking a challenging role' or 'team player'.\n"
+        f"3. Mirror industry-standard keywords: Python, SQL, REST APIs, Microservices, Cloud, Docker, System Design.\n"
+        f"4. Keep strictly to 3-4 lines (40-60 words). Return ONLY the polished summary text."
     )
-    gemini_res = call_gemini_api(
-        prompt=gemini_prompt,
-        system_context="You are an elite executive resume writer specializing in ATS optimization for top tech companies."
+    ai_res, provider = call_ai_agent(
+        prompt=ai_prompt,
+        system_context="You are an elite technical resume writer specializing in ATS optimization for top tech companies using the 2026 ATS Master Guide."
     )
-    if gemini_res and len(gemini_res) > 30 and gemini_res != clean_obj:
+    if ai_res and len(ai_res) > 30 and ai_res != clean_obj:
         return AIImproveTextResponse(
             original=clean_obj,
-            improved=gemini_res,
-            explanation="Elevated into an executive-level summary using Gemini AI.",
+            improved=ai_res,
+            explanation=f"Elevated into an executive-level summary powered by {provider}.",
             action_verbs_used=["Validate", "Standardize", "Deliver"],
         )
 
@@ -451,6 +523,117 @@ def improve_career_objective(
         improved=chosen,
         explanation="Refined into a high-impact, ATS-optimized executive summary showcasing core technical proficiencies and verified deliverables.",
         action_verbs_used=[action_verb],
+    )
+
+
+def improve_project_description(
+    project_text: str,
+    target_role: str | None = None,
+    tech_stack: str | None = None,
+) -> AIImproveTextResponse:
+    """
+    Polishes technical project descriptions using active engineering phrasing,
+    tech stack integration, and structured architecture statements.
+    Preserves original factual project details without hallucinating fake accomplishments.
+    """
+    clean_text = project_text.strip()
+    role = target_role or "Software Engineer"
+    stack_note = f"Tech Stack: {tech_stack}. " if tech_stack else ""
+
+    ai_prompt = (
+        f"You are a principal tech recruiter and ATS resume optimization specialist.\n"
+        f"Task: Polish the following project description for a candidate applying as '{role}'.\n"
+        f"{stack_note}Original text:\n{clean_text}\n\n"
+        f"Guidelines:\n"
+        f"- Maintain strict factual integrity. NEVER invent technologies, metrics, or credentials not in original.\n"
+        f"- Start bullet points with strong active engineering verbs (e.g. Architected, Engineered, Developed, Implemented, Deployed, Integrated, Optimized).\n"
+        f"- Ensure clear technical stack mentions and architecture depth.\n"
+        f"- Return ONLY the polished project description bullet points or text."
+    )
+
+    ai_res, provider = call_ai_agent(
+        prompt=ai_prompt,
+        system_context="You are an expert technical resume coach optimizing candidate resumes for ATS readability and engineering impact."
+    )
+    if ai_res and len(ai_res) > 15:
+        first_word = ai_res.split()[0].rstrip(",.:")
+        return AIImproveTextResponse(
+            original=clean_text,
+            improved=ai_res,
+            explanation=f"Enhanced project architecture and action verbs powered by {provider}.",
+            action_verbs_used=[first_word],
+        )
+
+    # Deterministic fallback
+    improved = clean_text
+    for pat, repl, _ in WEAK_VERBS_MAP:
+        improved = re.sub(pat, repl, improved)
+    improved = re.sub(r"(?i)^[-*•>\s]*\b(?:i|me|my|we|our)\b\s*", "", improved).strip()
+    if not improved.startswith(("Architected", "Engineered", "Developed", "Implemented", "Constructed")):
+        improved = f"Engineered {improved[0].lower() + improved[1:] if improved else 'full-stack solution'}"
+    if tech_stack and tech_stack.lower() not in improved.lower():
+        improved = f"{improved.rstrip('.')} utilizing {tech_stack}."
+
+    first_word = improved.split()[0].rstrip(",.:")
+    return AIImproveTextResponse(
+        original=clean_text,
+        improved=improved,
+        explanation="Refined with strong engineering verbs and technology stack alignment.",
+        action_verbs_used=[first_word],
+    )
+
+
+def improve_internship_description(
+    internship_text: str,
+    target_role: str | None = None,
+    context_stack: str | None = None,
+) -> AIImproveTextResponse:
+    """
+    Polishes internship / work experience descriptions, focusing on production delivery,
+    cross-functional collaboration, and defect prevention without inventing credentials.
+    """
+    clean_text = internship_text.strip()
+    role = target_role or "Software Engineer"
+    ctx_note = f"Context: {context_stack}. " if context_stack else ""
+
+    ai_prompt = (
+        f"You are a senior tech recruiter and resume specialist.\n"
+        f"Task: Polish the following internship/work experience description for a candidate applying as '{role}'.\n"
+        f"{ctx_note}Original text:\n{clean_text}\n\n"
+        f"Guidelines:\n"
+        f"- Maintain strict factual accuracy. NEVER invent companies, fake numbers, or degrees.\n"
+        f"- Upgrade passive phrasing ('worked on', 'helped seniors') to collaborative engineering ownership.\n"
+        f"- Use active verbs from: Engineered, Spearheaded, Automated, Streamlined, Implemented, Deployed, Partnered, Refactored.\n"
+        f"- Return ONLY the polished single or multi-bullet experience description."
+    )
+
+    ai_res, provider = call_ai_agent(
+        prompt=ai_prompt,
+        system_context="You are a senior tech recruiter optimizing candidate resumes for engineering impact and ATS compliance."
+    )
+    if ai_res and len(ai_res) > 15:
+        first_word = ai_res.split()[0].rstrip(",.:")
+        return AIImproveTextResponse(
+            original=clean_text,
+            improved=ai_res,
+            explanation=f"Polished internship experience powered by {provider}.",
+            action_verbs_used=[first_word],
+        )
+
+    # Deterministic fallback
+    improved = clean_text
+    for pat, repl, _ in WEAK_VERBS_MAP:
+        improved = re.sub(pat, repl, improved)
+    improved = re.sub(r"(?i)^[-*•>\s]*\b(?:i|me|my|we|our)\b\s*", "", improved).strip()
+    if not improved.startswith(("Engineered", "Collaborated", "Spearheaded", "Implemented", "Delivered", "Automated")):
+        improved = f"Collaborated to engineer and deliver {improved[0].lower() + improved[1:] if improved else 'production features'}."
+
+    first_word = improved.split()[0].rstrip(",.:")
+    return AIImproveTextResponse(
+        original=clean_text,
+        improved=improved,
+        explanation="Refined with proactive collaboration and active engineering verbs.",
+        action_verbs_used=[first_word],
     )
 
 
