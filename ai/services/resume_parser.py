@@ -11,9 +11,17 @@ logger = logging.getLogger(__name__)
 
 # Try optional third-party packages if installed, otherwise fall back gracefully
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz  # PyMuPDF
 except ImportError:
-    fitz = None
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
+
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 
 try:
     import docx  # python-docx
@@ -62,20 +70,31 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """
     Extracts plain text from PDF bytes.
-    Uses PyMuPDF (fitz) if installed, otherwise uses native regex & zlib stream decompression.
+    Uses PyMuPDF (fitz) or pypdf if installed, otherwise uses native regex & zlib stream decompression.
     """
     # 1. Try PyMuPDF if available
     if fitz is not None:
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            pages_text = [page.get_text() for page in doc]
-            text = "\n".join(pages_text).strip()
+            pages_text = [page.get_text() for page in doc if page.get_text().strip()]
+            text = "\n\n".join(pages_text).strip()
             if len(text) > 30:
-                return text
+                return clean_and_normalize_resume_text(text)
         except Exception as e:
-            logger.debug("PyMuPDF parsing failed, using native fallback: %s", e)
+            logger.debug("PyMuPDF parsing failed, trying pypdf: %s", e)
 
-    # 2. Pure-Python fallback using PDF object stream decompression
+    # 2. Try pypdf if available
+    if pypdf is not None:
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            pages_text = [page.extract_text() for page in reader.pages if page.extract_text() and page.extract_text().strip()]
+            text = "\n\n".join(pages_text).strip()
+            if len(text) > 30:
+                return clean_and_normalize_resume_text(text)
+        except Exception as e:
+            logger.debug("pypdf parsing failed, using native fallback: %s", e)
+
+    # 3. Pure-Python fallback using PDF object stream decompression
     extracted_chunks: list[str] = []
     stream_pattern = re.compile(rb"stream\r?\n(.*?)\r?\nendstream", re.DOTALL)
     for match in stream_pattern.finditer(file_bytes):
@@ -355,133 +374,208 @@ def parse_resume_content(filename: str, file_bytes: bytes) -> str:
 
 SECTION_PATTERNS = {
     "summary": [
-        r"\b(?:professional\s+)?summary\b",
-        r"\bcareer\s+objective\b",
-        r"\bobjective\b",
-        r"\babout\s+me\b",
-        r"\bprofile\b",
-        r"\bexecutive\s+summary\b",
+        r"\b(?:professional\s+|career\s+|executive\s+)?(?:summary|objective|profile|overview|about\s+me)\b",
     ],
     "skills": [
-        r"\btechnical\s+skills\b",
-        r"\bskills\b",
-        r"\btechnologies\b",
-        r"\btech\s+stack\b",
-        r"\bcore\s+competencies\b",
-        r"\bcompetencies\b",
-        r"\btools\s+(?:&|and)\s+technologies\b",
-        r"\bprogramming\s+languages\b",
+        r"\b(?:technical\s+skills|core\s+competencies|key\s+skills|skills\s*(?:&|and|/)\s*abilities|skills\s*(?:&|and|/)\s*technologies|technologies\s*(?:&|and|/)\s*tools|tools\s*(?:&|and|/)\s*technologies|programming\s+languages|tech\s+stack|technical\s+expertise|competencies|areas\s+of\s+expertise|technical\s+proficiencies)\b",
+        r"^(?:skills|technical\s+skill|technologies|tools|it\s+skills)$",
     ],
     "education": [
-        r"\beducation\b",
-        r"\bacademics\b",
-        r"\bacacademic\s+background\b",
-        r"\bqualifications\b",
-        r"\beducational\s+qualifications\b",
+        r"\b(?:academic\s+background|educational\s+background|education\s*(?:&|and|/)\s*training|educational\s+qualifications?|qualifications?|academics?)\b",
+        r"^(?:education|academic)$",
     ],
     "projects": [
-        r"\bprojects\b",
-        r"\bacademic\s+projects\b",
-        r"\bpersonal\s+projects\b",
-        r"\bkey\s+projects\b",
-        r"\bcapstone\s+projects?\b",
-        r"\btechnical\s+projects\b",
+        r"\b(?:academic\s+projects|personal\s+projects|technical\s+projects|key\s+projects|capstone\s+projects?|featured\s+projects|project\s+work)\b",
+        r"^(?:projects|project)$",
     ],
     "experience": [
-        r"\bwork\s+experience\b",
-        r"\bprofessional\s+experience\b",
-        r"\bexperience\b",
-        r"\bemployment\s+history\b",
-        r"\bwork\s+history\b",
+        r"\b(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history|career\s+history|practical\s+experience)\b",
+        r"^(?:experience|experiences)$",
     ],
     "internships": [
-        r"\binternships?\b",
-        r"\binternship\s+experience\b",
-        r"\bsummer\s+internship\b",
-        r"\bindustrial\s+training\b",
-        r"\bapprentice\b",
+        r"\b(?:internships?|internship\s+experience|summer\s+internship|industrial\s+training|apprentice(?:ship)?)\b",
     ],
     "certifications": [
-        r"\bcertifications?\b",
-        r"\blicenses\s+(?:&|and)\s+certifications\b",
-        r"\bcertificates?\b",
-        r"\bcourses\s+(?:&|and)\s+certifications\b",
+        r"\b(?:certifications?|licenses?\s*(?:&|and|/)\s*certifications?|courses?\s*(?:&|and|/)\s*certifications?|certificates?|professional\s+certifications?)\b",
     ],
     "achievements": [
-        r"\bachievements?\b",
-        r"\bawards\b",
-        r"\bawards\s+(?:&|and)\s+achievements\b",
-        r"\bhonors\b",
-        r"\baccomplishments\b",
-        r"\bextracurricular\s+activities\b",
-        r"\bco-curricular\b",
+        r"\b(?:achievements?|awards?\s*(?:&|and|/)\s*achievements?|honors?\s*(?:&|and|/)\s*awards?|extracurricular\s+activities|co-curricular\s+activities|accomplishments?|publications?)\b",
+        r"^(?:achievements|awards|honors)$",
     ],
 }
 
 
+def classify_section_header(line: str) -> str | None:
+    """
+    Identifies whether a line is a resume section header.
+    Handles Markdown headings, colons, bullets, and multi-term variations.
+    """
+    cleaned = re.sub(r"^[\s#*\-_•>|0-9.)]+", "", line).strip()
+    cleaned = re.sub(r"[\s*#_\-:|]+$", "", cleaned).strip()
+    if not cleaned or len(cleaned.split()) > 7 or len(cleaned) > 55:
+        return None
+
+    cleaned_lower = cleaned.lower()
+
+    # 1. Summary / Objective
+    if re.fullmatch(r"(?:professional\s+|career\s+|executive\s+)?(?:summary|objective|profile|overview|about\s+me)", cleaned_lower):
+        return "summary"
+
+    # 2. Skills / Competencies
+    if re.search(
+        r"\b(?:technical\s+skills|core\s+competencies|key\s+skills|skills\s*(?:&|and|/)\s*abilities|skills\s*(?:&|and|/)\s*technologies|technologies\s*(?:&|and|/)\s*tools|tools\s*(?:&|and|/)\s*technologies|programming\s+languages|tech\s+stack|technical\s+expertise|competencies|areas\s+of\s+expertise|technical\s+proficiencies)\b",
+        cleaned_lower,
+    ) or cleaned_lower in ["skills", "technical skill", "technologies", "tools", "it skills"]:
+        return "skills"
+
+    # 3. Work Experience / History
+    if re.search(
+        r"\b(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history|career\s+history|practical\s+experience)\b",
+        cleaned_lower,
+    ):
+        return "experience"
+
+    # 4. Internships (or combined Experience / Internships)
+    if re.search(
+        r"\b(?:internships?|internship\s+experience|summer\s+internship|industrial\s+training|apprentice(?:ship)?)\b",
+        cleaned_lower,
+    ):
+        return "experience" if "work" in cleaned_lower else "internships"
+
+    if cleaned_lower in ["experience", "experiences"]:
+        return "experience"
+
+    # 5. Projects
+    if re.search(
+        r"\b(?:academic\s+projects|personal\s+projects|technical\s+projects|key\s+projects|capstone\s+projects?|featured\s+projects|project\s+work)\b",
+        cleaned_lower,
+    ) or cleaned_lower in ["projects", "project"]:
+        return "projects"
+
+    # 6. Education
+    if re.search(
+        r"\b(?:academic\s+background|educational\s+background|education\s*(?:&|and|/)\s*training|educational\s+qualifications?|qualifications?|academics?)\b",
+        cleaned_lower,
+    ) or cleaned_lower in ["education", "academic"]:
+        return "education"
+
+    # 7. Certifications
+    if re.search(
+        r"\b(?:certifications?|licenses?\s*(?:&|and|/)\s*certifications?|courses?\s*(?:&|and|/)\s*certifications?|certificates?|professional\s+certifications?)\b",
+        cleaned_lower,
+    ):
+        return "certifications"
+
+    # 8. Achievements / Awards
+    if re.search(
+        r"\b(?:achievements?|awards?\s*(?:&|and|/)\s*achievements?|honors?\s*(?:&|and|/)\s*awards?|extracurricular\s+activities|co-curricular\s+activities|accomplishments?|publications?)\b",
+        cleaned_lower,
+    ) or cleaned_lower in ["achievements", "awards", "honors"]:
+        return "achievements"
+
+    return None
+
+
 def extract_contact_info(text: str) -> dict[str, Any]:
     """
-    Extracts contact info: name, email, phone, linkedin, github, portfolio/demo URLs, location.
+    Extracts contact info: candidate name, email, phone, linkedin, github, portfolio/demo URLs, and location.
+    Preserves clean separation without leaking preamble into resume sections.
     """
     text_lower = text.lower()
 
-    # Email
-    email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text)
+    # 1. Email Address
+    email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", text)
     email = email_match.group(0) if email_match else None
 
-    # Phone (Indian + International formats)
+    # 2. Phone (Indian + US + International formats)
     phone_match = re.search(
-        r"(?:\+?91[\s.-]?)?[6-9]\d{4}[\s.-]?\d{5}|(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
+        r"(?:\+?91[\s.-]?)?[6-9]\d{4}[\s.-]?\d{5}|(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}|\+\d{1,3}[\s.-]?\d{3,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}",
         text,
     )
     phone = phone_match.group(0).strip() if phone_match else None
 
-    # LinkedIn
-    linkedin_match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]+)", text_lower)
+    # 3. LinkedIn Profile
+    linkedin_match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_\-\.]+)/?", text_lower)
     linkedin = f"https://linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else None
     if not linkedin and ("linkedin.com" in text_lower or "linkedin" in text_lower):
         linkedin = "LinkedIn Profile Included"
 
-    # GitHub
-    github_match = re.search(r"github\.com/([a-zA-Z0-9_-]+)", text_lower)
+    # 4. GitHub Profile
+    github_match = re.search(r"github\.com/([a-zA-Z0-9_\-\.]+)/?", text_lower)
     github = f"https://github.com/{github_match.group(1)}" if github_match else None
     if not github and ("github.com" in text_lower or "github" in text_lower):
         github = "GitHub Profile Included"
 
-    # Portfolio / Web / Demo
+    # 5. Portfolio / Web / Demo (ensuring email domain or academic degrees like B.Tech are not misidentified)
     portfolio_match = re.search(
-        r"\b(?:https?://)?(?:[a-zA-Z0-9-]+\.)*(?:vercel\.app|netlify\.app|github\.io|pages\.dev|[a-zA-Z0-9-]+\.(?:com|org|dev|tech|me))\b",
+        r"\b(?:https?://)?(?:[a-zA-Z0-9-]+\.)*(?:vercel\.app|netlify\.app|github\.io|pages\.dev|[a-zA-Z0-9-]+\.(?:tech|dev|me|io|space))\b",
         text_lower,
     )
     portfolio = None
     if portfolio_match:
         found_url = portfolio_match.group(0)
-        if "github.com" not in found_url and "linkedin.com" not in found_url:
+        clean_cand = found_url.lower().replace(".", "").strip()
+        if (
+            "github.com" not in found_url
+            and "linkedin.com" not in found_url
+            and clean_cand not in ["btech", "mtech", "bca", "mca", "bsc", "msc", "ba", "ma", "phd"]
+        ):
             portfolio = found_url
 
-    # City / Location Detection
-    major_cities = [
-        "Bengaluru", "Bangalore", "Hyderabad", "Pune", "Mumbai", "Chennai", "Delhi",
-        "Noida", "Gurugram", "Gurgaon", "Kolkata", "Ahmedabad", "Coimbatore", "Kochi",
-        "Trivandrum", "Indore", "Jaipur", "Chandigarh", "Mysuru", "Remote"
-    ]
+    # Also check generic websites starting with http/https or www
+    if not portfolio:
+        web_match = re.search(r"\b(?:https?://|www\.)[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?\b", text_lower)
+        if web_match:
+            candidate_web = web_match.group(0)
+            if not any(blocked in candidate_web for blocked in ["github.com", "linkedin.com", "twitter.com", "facebook.com", "instagram.com"]):
+                portfolio = candidate_web
+
+    # 6. City / Location Detection
     detected_location = None
-    for city in major_cities:
-        if re.search(r"\b" + re.escape(city) + r"\b", text, re.IGNORECASE):
-            detected_location = city
+    # Inspect top header lines for 'City, State' or 'City, Country' pattern
+    for line in text.split("\n")[:10]:
+        for part in re.split(r"[|•·\t]|\s{2,}", line):
+            part = part.strip()
+            m = re.match(r"^([A-Za-z]+(?:\s+[A-Za-z]+)?),\s*([A-Za-z]{2,}|[A-Za-z]{2})$", part)
+            if m and not any(kw in part.lower() for kw in ["resume", "developer", "engineer", "analyst", "manager", "lead"]):
+                detected_location = part
+                break
+        if detected_location:
             break
 
-    # Candidate Name (Usually the first line or first 4-word heading)
+    if not detected_location:
+        major_cities = [
+            "Bengaluru", "Bangalore", "Hyderabad", "Pune", "Mumbai", "Chennai", "Delhi",
+            "Noida", "Gurugram", "Gurgaon", "Kolkata", "Ahmedabad", "Coimbatore", "Kochi",
+            "Trivandrum", "Indore", "Jaipur", "Chandigarh", "Mysuru",
+            "San Francisco", "New York", "Seattle", "Austin", "Boston", "Chicago", "Los Angeles",
+            "London", "Toronto", "Vancouver", "Berlin", "Munich", "Singapore", "Sydney", "Dubai", "Remote"
+        ]
+        for city in major_cities:
+            if re.search(r"\b" + re.escape(city) + r"\b", text, re.IGNORECASE):
+                detected_location = city
+                break
+
+    # 7. Candidate Name (from first 6 lines, cleaned of titles and role subtitles)
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     candidate_name = None
-    for line in lines[:5]:
+    for line in lines[:6]:
+        # If line has separators like '|' or '•', take the first chunk
+        candidate_chunk = re.split(r"[|•·\t]", line)[0].strip()
+        candidate_chunk = re.sub(r"^(?:Mr\.|Ms\.|Mrs\.|Dr\.)\s*", "", candidate_chunk, flags=re.IGNORECASE).strip()
+        words = candidate_chunk.split()
         if (
-            len(line.split()) <= 4
-            and "@" not in line
-            and "http" not in line.lower()
-            and not any(re.search(r"\b" + re.escape(s) + r"\b", line, re.IGNORECASE) for s in ["resume", "curriculum", "vitae", "summary", "skills"])
+            1 <= len(words) <= 4
+            and len(candidate_chunk) <= 40
+            and "@" not in candidate_chunk
+            and "http" not in candidate_chunk.lower()
+            and not any(char.isdigit() for char in candidate_chunk)
+            and not any(re.search(r"\b" + re.escape(s) + r"\b", candidate_chunk, re.IGNORECASE) for s in [
+                "resume", "curriculum", "vitae", "summary", "skills", "objective", "profile",
+                "software", "engineer", "developer", "intern", "fresher", "portfolio", "contact"
+            ])
         ):
-            candidate_name = line
+            candidate_name = candidate_chunk.title() if candidate_chunk.isupper() else candidate_chunk
             break
 
     return {
@@ -501,42 +595,61 @@ def extract_contact_info(text: str) -> dict[str, Any]:
 
 def extract_resume_sections(text: str) -> dict[str, Any]:
     """
-    Segments resume text into standard sections:
+    Segments resume text cleanly into standard ATS sections:
     summary, skills, education, projects, experience, internships, certifications, achievements.
+    Ensures contact header / preamble lines never contaminate the professional summary.
     """
     lines = text.split("\n")
-    sections: dict[str, list[str]] = {k: [] for k in SECTION_PATTERNS}
-    current_section = "summary"  # Default header region
+    sections: dict[str, list[str]] = {
+        "summary": [],
+        "skills": [],
+        "experience": [],
+        "internships": [],
+        "projects": [],
+        "education": [],
+        "certifications": [],
+        "achievements": [],
+    }
+    current_section: str | None = None
+    preamble_lines: list[str] = []
 
-    # Find section header matches
     for line in lines:
         clean_line = line.strip()
         if not clean_line:
             continue
 
-        # Check if line matches a section header (usually short, <= 6 words)
-        if len(clean_line.split()) <= 6:
-            matched_header = None
-            for sec_key, patterns in SECTION_PATTERNS.items():
-                for pat in patterns:
-                    if re.fullmatch(pat, clean_line, re.IGNORECASE) or re.match(r"^#*\s*" + pat + r"[:\s]*$", clean_line, re.IGNORECASE):
-                        matched_header = sec_key
-                        break
-                if matched_header:
-                    break
+        matched_header = classify_section_header(clean_line)
+        if matched_header:
+            current_section = matched_header
+            continue
 
-            if matched_header:
-                current_section = matched_header
-                continue
+        if current_section is None:
+            preamble_lines.append(clean_line)
+        else:
+            sections[current_section].append(clean_line)
 
-        sections[current_section].append(clean_line)
+    summary_text = "\n".join(sections["summary"]).strip()
+    # If no explicit summary header existed, check preamble for a genuine prose statement
+    if not summary_text:
+        for pline in preamble_lines:
+            words = pline.split()
+            # Must be a substantial sentence and not contact information
+            if (
+                len(words) >= 8
+                and "@" not in pline
+                and not any(kw in pline.lower() for kw in ["http", "linkedin", "github", "phone", "+91"])
+                and "|" not in pline
+                and "•" not in pline
+            ):
+                summary_text = pline
+                break
 
     contact_info = extract_contact_info(text)
 
     # Convert line arrays to structured text snippets
     structured_sections: dict[str, Any] = {
         "contact_info": contact_info,
-        "summary": "\n".join(sections["summary"]).strip(),
+        "summary": summary_text,
         "skills": "\n".join(sections["skills"]).strip(),
         "education": "\n".join(sections["education"]).strip(),
         "projects": "\n".join(sections["projects"]).strip(),

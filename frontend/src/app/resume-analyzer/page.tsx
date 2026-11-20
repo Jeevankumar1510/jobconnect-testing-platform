@@ -363,25 +363,27 @@ export default function ResumeAnalyzerPage() {
 
   function handleSaveCorrections() {
     if (!analysis) return;
-    const reconstructedText = [
-      inspectName.trim(),
-      inspectContact.trim(),
-      "",
-      "CAREER OBJECTIVE",
-      inspectSummary.trim(),
-      "",
-      "TECHNICAL SKILLS",
-      inspectSkills.trim(),
-      "",
-      "PROJECTS",
-      inspectProjects.trim(),
-      "",
-      "EXPERIENCE",
-      inspectExperience.trim(),
-      "",
-      "EDUCATION",
-      inspectEducation.trim(),
-    ].filter((p, i) => i === 2 || p.length > 0).join("\n");
+    const parts: string[] = [];
+    if (inspectName.trim()) parts.push(inspectName.trim());
+    if (inspectContact.trim()) parts.push(inspectContact.trim());
+
+    if (inspectSummary.trim()) {
+      parts.push("", "PROFESSIONAL SUMMARY", inspectSummary.trim());
+    }
+    if (inspectSkills.trim()) {
+      parts.push("", "TECHNICAL SKILLS", inspectSkills.trim());
+    }
+    if (inspectProjects.trim()) {
+      parts.push("", "PROJECTS", inspectProjects.trim());
+    }
+    if (inspectExperience.trim()) {
+      parts.push("", "EXPERIENCE", inspectExperience.trim());
+    }
+    if (inspectEducation.trim()) {
+      parts.push("", "EDUCATION", inspectEducation.trim());
+    }
+
+    const reconstructedText = parts.join("\n").trim();
 
     setPastedText(reconstructedText);
     setInputMethod("text");
@@ -1086,13 +1088,13 @@ export default function ResumeAnalyzerPage() {
                       if (analysis) {
                         const sec = analysis.extracted_sections || {};
                         const ci = sec.contact_info || {};
-                        setInspectName(ci.candidate_name || "");
-                        setInspectContact([ci.email, ci.phone, ci.location, ci.linkedin, ci.github].filter(Boolean).join(" | "));
+                        setInspectName(ci.candidate_name && ci.candidate_name !== "Candidate" ? ci.candidate_name : "");
+                        setInspectContact([ci.email, ci.phone, ci.location, ci.linkedin, ci.github, ci.portfolio].filter(Boolean).join(" | "));
                         setInspectSummary(sec.summary || "");
                         setInspectSkills(sec.skills || (analysis.extracted_skills || []).join(", "));
                         setInspectProjects(sec.projects || "");
                         setInspectExperience(sec.experience || sec.internships || "");
-                        setInspectEducation(sec.education || "");
+                        setInspectEducation([sec.education, sec.certifications].filter(Boolean).join("\n\n") || "");
                         setShowInspectModal(true);
                       }
                     }}
