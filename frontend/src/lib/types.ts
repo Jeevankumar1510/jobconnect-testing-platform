@@ -242,6 +242,16 @@ export type ResumeWordedScores = {
   ats_skills_score: number;
 };
 
+export type AIAgentReview = {
+  provider: string;
+  recruiter_critique: string;
+  bullet_xyz_verdict: string;
+  xyz_score: number;
+  keyword_stuffing_risk: "Low" | "Medium" | "High" | string;
+  top_recommendations: string[];
+  tailoring_advice: string;
+};
+
 export type ResumeAnalysis = {
   id: number;
   user_id?: number | null;
@@ -277,6 +287,7 @@ export type ResumeAnalysis = {
   bullet_evaluations?: BulletEvaluation[];
   word_metrics?: WordMetrics;
   resume_worded_scores?: ResumeWordedScores;
+  ai_agent_review?: AIAgentReview | null;
   methodology_info?: string;
   error_message?: string | null;
   created_at: string;

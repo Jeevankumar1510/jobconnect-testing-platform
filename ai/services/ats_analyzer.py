@@ -1461,6 +1461,201 @@ def calculate_resume_worded_scores(word_metrics: dict[str, Any], general_score: 
     }
 
 
+def audit_resume_with_ai_agents(
+    resume_text: str,
+    target_role: str,
+    jd_text: str | None = None,
+    matched_skills: list[str] | None = None,
+    missing_skills: list[str] | None = None,
+    score: int = 75,
+) -> dict[str, Any]:
+    """
+    AI Agent ATS Reviewer powered by ChatGPT (OpenAI) and Google Gemini API,
+    with an intelligent Master Guide 2026 algorithmic engine as fallback.
+
+    Evaluates:
+    - 6-second recruiter screening verdict (credibility, tone, relevance)
+    - Google X-Y-Z formula bullet quality and quantification
+    - Keyword stuffing & natural keyword density audit (Master Guide page 16)
+    - Top 3 strategic recommendations to reach 85%+ score
+    """
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    openai_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+    prompt_context = (
+        "You are an expert Senior Technical Recruiter and ATS Optimization Specialist trained on the 2026 ATS Master Guide. "
+        "Evaluate the candidate resume strictly according to ATS screening standards (e.g. Google, Amazon, TCS, Infosys). "
+        "Assess: 1) Google X-Y-Z formula (Accomplished [X] as measured by [Y] by doing [Z]), 2) authentic technical evidence vs fluff, "
+        "and 3) keyword stuffing risk (more than 4 occurrences of a single term). "
+        "Return ONLY a raw JSON object with keys: "
+        "\"recruiter_verdict\" (string, 2-3 sentences), "
+        "\"bullet_xyz_verdict\" (string, 1-2 sentences on metric quality), "
+        "\"xyz_score\" (integer 0-100), "
+        "\"keyword_stuffing_risk\" (\"Low\" or \"Medium\" or \"High\"), "
+        "\"top_recommendations\" (list of 3 strings), "
+        "\"tailoring_advice\" (string, 1-2 sentences)."
+    )
+
+    user_query = (
+        f"Target Role: {target_role}\n"
+        f"Job Requirements: {jd_text[:1000] if jd_text else 'Standard requirements for ' + target_role}\n"
+        f"Current Algorithmic ATS Score: {score}/100\n"
+        f"Matched Skills: {', '.join((matched_skills or [])[:10])}\n"
+        f"Missing Skills: {', '.join((missing_skills or [])[:6])}\n\n"
+        f"Resume Content (sample):\n\"\"\"{resume_text[:2500]}\"\"\""
+    )
+
+    # 1. Try OpenAI / ChatGPT
+    if openai_key:
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            payload = {
+                "model": openai_model,
+                "messages": [
+                    {"role": "system", "content": prompt_context},
+                    {"role": "user", "content": user_query},
+                ],
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {openai_key}"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content = data["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
+                return {
+                    "provider": f"ChatGPT ({openai_model})",
+                    "recruiter_verdict": parsed.get("recruiter_verdict", ""),
+                    "bullet_xyz_verdict": parsed.get("bullet_xyz_verdict", ""),
+                    "xyz_score": int(parsed.get("xyz_score", 75)),
+                    "keyword_stuffing_risk": parsed.get("keyword_stuffing_risk", "Low"),
+                    "top_recommendations": parsed.get("top_recommendations", []),
+                    "tailoring_advice": parsed.get("tailoring_advice", ""),
+                }
+        except Exception as e:
+            logger.debug("ChatGPT ATS audit skipped or error: %s", e)
+
+    # 2. Try Google Gemini
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            payload = {
+                "system_instruction": {"parts": [{"text": prompt_context}]},
+                "contents": [{"parts": [{"text": user_query}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
+                },
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                parsed = json.loads(text)
+                return {
+                    "provider": "Google Gemini 1.5",
+                    "recruiter_verdict": parsed.get("recruiter_verdict", ""),
+                    "bullet_xyz_verdict": parsed.get("bullet_xyz_verdict", ""),
+                    "xyz_score": int(parsed.get("xyz_score", 75)),
+                    "keyword_stuffing_risk": parsed.get("keyword_stuffing_risk", "Low"),
+                    "top_recommendations": parsed.get("top_recommendations", []),
+                    "tailoring_advice": parsed.get("tailoring_advice", ""),
+                }
+        except Exception as e:
+            logger.debug("Gemini ATS audit skipped or error: %s", e)
+
+    # 3. Master Guide 2026 Algorithmic Agent Fallback (100% Deterministic & Offline)
+    text_lower = resume_text.lower()
+
+    # Calculate quantification presence across bullets
+    bullets = re.findall(r"^[•\-*]\s+(.*)$", resume_text, re.MULTILINE)
+    if not bullets:
+        bullets = [line.strip() for line in resume_text.splitlines() if len(line.strip()) > 25 and not line.strip().isupper()]
+
+    total_bullets = max(1, len(bullets))
+    quantified_count = 0
+    action_verb_count = 0
+    metric_pattern = re.compile(
+        r"\b(?:\d+(?:\.\d+)?%|\$\d+(?:[kKmMbB])?|rs\.?\s*\d+|\b\d+\s*(?:ms|s|sec|users|clients|requests|teams|stars|engineers|microservices|collections|stores|gb|tb|mb)\b|\b\d{2,}\b)",
+        re.IGNORECASE,
+    )
+
+    for b in bullets:
+        has_metric = bool(metric_pattern.search(b))
+        has_action = any(re.search(r"\b" + verb + r"\b", b, re.IGNORECASE) for verb in STRONG_ACTION_VERBS)
+        if has_metric:
+            quantified_count += 1
+        if has_action:
+            action_verb_count += 1
+
+    metric_rate = int(round((quantified_count / total_bullets) * 100))
+    action_rate = int(round((action_verb_count / total_bullets) * 100))
+    xyz_score = min(100, max(25, int(round((metric_rate * 0.6) + (action_rate * 0.4)))))
+
+    # Keyword stuffing analysis (per Master Guide Page 16)
+    skill_frequencies = []
+    for s in (matched_skills or []):
+        freq = len(re.findall(r"\b" + re.escape(s.lower()) + r"\b", text_lower))
+        skill_frequencies.append(freq)
+
+    overstuffed = any(f >= 5 for f in skill_frequencies)
+    stuffing_risk = "High" if overstuffed else ("Medium" if any(f == 4 for f in skill_frequencies) else "Low")
+
+    if xyz_score >= 75:
+        xyz_verdict = f"Strong Google X-Y-Z compliance: {metric_rate}% of bullets contain quantified metrics and active engineering power verbs."
+    elif xyz_score >= 50:
+        xyz_verdict = f"Moderate metric density: {metric_rate}% of bullets include numbers. Upgrade qualitative statements to quantified results (%, users, latency)."
+    else:
+        xyz_verdict = f"Bullets are predominantly duty-focused ({metric_rate}% quantified). Rephrase using: [Action Verb] + [What you built] + [How/Tech] + [Quantified Impact]."
+
+    critique = (
+        f"Resume presents a coherent technical profile targeting '{target_role}'. "
+        f"Demonstrates credible domain capabilities with {len(matched_skills or [])} verified skill intersections. "
+        + ("Profile clears initial 6-second recruiter glance with strong structure." if score >= 80 else "Strengthening quantified impact and reducing passive phrasing will lift callback rates.")
+    )
+
+    recs = []
+    if missing_skills:
+        recs.append(f"Incorporate high-priority missing technologies: {', '.join(missing_skills[:3])} into Skills and Projects.")
+    if xyz_score < 70:
+        recs.append("Add quantitative measurements to projects: include users served, database query reductions, or latency improvements.")
+    if stuffing_risk == "High":
+        recs.append("Reduce repeated skill occurrences to 2-4 times naturally across the resume to avoid ATS over-stuffing penalties.")
+
+    fallback_recs = [
+        "Align the Professional Summary to explicitly state your target role and 2 top production-grade engineering strengths.",
+        "Ensure bullet points open with high-impact power verbs (Engineered, Architected, Spearheaded) rather than passive duties.",
+        "Validate single-column layout conformity and ensure contact links (GitHub, LinkedIn) are text-selectable plain URLs.",
+        "Verify your education section includes degree, college name, graduation year, and score/CGPA for automated parsing.",
+    ]
+    for fb in fallback_recs:
+        if len(recs) >= 3:
+            break
+        if fb not in recs:
+            recs.append(fb)
+
+    return {
+        "provider": "Master Guide AI Agent (2026 Edition)",
+        "recruiter_verdict": critique,
+        "bullet_xyz_verdict": xyz_verdict,
+        "xyz_score": xyz_score,
+        "keyword_stuffing_risk": stuffing_risk,
+        "top_recommendations": recs[:3],
+        "tailoring_advice": f"Tailor project bullets to emphasize {target_role} architectural patterns and system design best practices.",
+    }
+
+
 # -----------------------------------------------------------------------------
 # Main Resume Analyzer Service Function
 # -----------------------------------------------------------------------------
@@ -1611,6 +1806,21 @@ def analyze_resume_text(
 
     primary_score = job_match_score if (effective_jd and job_match_score is not None) else general_ats_score
 
+    # 8. AI Agent ATS Recruiter Review (ChatGPT & Gemini Integration)
+    ai_agent_review = audit_resume_with_ai_agents(
+        resume_text=resume_text,
+        target_role=effective_role,
+        jd_text=effective_jd,
+        matched_skills=matched_job_skills if effective_jd else tech_skills,
+        missing_skills=missing_skills,
+        score=primary_score,
+    )
+
+    if ai_agent_review.get("keyword_stuffing_risk") == "High":
+        weaknesses.append("High keyword stuffing risk detected: repeating keywords >4 times triggers ATS penalty filters.")
+    if ai_agent_review.get("xyz_score", 0) >= 80:
+        strengths.append(f"Exceptional Google X-Y-Z formula metrics ({ai_agent_review['xyz_score']}%): bullets demonstrate quantified business impact.")
+
     return {
         "ats_score": primary_score,
         "job_match_score": job_match_score,
@@ -1642,6 +1852,7 @@ def analyze_resume_text(
         "bullet_evaluations": bullet_evaluations,
         "word_metrics": word_metrics,
         "resume_worded_scores": resume_worded_scores,
+        "ai_agent_review": ai_agent_review,
         "methodology_info": methodology_info,
         "error_message": error_message,
     }
