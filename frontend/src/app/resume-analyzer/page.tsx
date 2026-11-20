@@ -73,7 +73,7 @@ import type {
 
 type AnalysisMode = "general" | "job_description" | "job_id";
 type InputMethod = "file" | "text";
-type ResultTab = "inspector" | "bullets" | "vocabulary" | "breakdown" | "keywords" | "assistant" | "preview";
+type ResultTab = "inspector" | "bullets" | "vocabulary" | "breakdown" | "keywords" | "master_guide" | "assistant" | "preview";
 
 export default function ResumeAnalyzerPage() {
   const { user, token, ready } = useAuth();
@@ -1595,6 +1595,24 @@ export default function ResumeAnalyzerPage() {
 
               <button
                 type="button"
+                onClick={() => setActiveTab("master_guide")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  activeTab === "master_guide"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                    : "bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                }`}
+              >
+                <Award className="w-4 h-4 text-amber-400" />
+                Master Guide 2026 Audit
+                {analysis.master_guide_audit && (
+                  <span className="ml-1 px-2 py-0.5 bg-amber-500/20 text-amber-300 text-xs rounded-full font-bold">
+                    {analysis.master_guide_audit.sixty_second_audit?.passed_count || 0}/5
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab("assistant")}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                   activeTab === "assistant"
@@ -2329,6 +2347,296 @@ export default function ResumeAnalyzerPage() {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* TAB: ATS Resume Master Guide (2026 Edition) Audit */}
+            {activeTab === "master_guide" && (
+              <div className="space-y-6">
+                {/* Master Guide Header & Recruiter Score Verdict */}
+                <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold rounded-full uppercase tracking-wider">
+                          Edition 2026
+                        </span>
+                        <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 text-xs font-bold rounded-full">
+                          40-Page Master Guide Verified
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Award className="w-6 h-6 text-amber-400" />
+                        ATS Resume Master Guide Quality Audit
+                      </h3>
+                      <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                        Comprehensive rule evaluation across all 10 core chapters: the 60-second mistake scan, the 12 auto-rejection errors, Google X-Y-Z bullet formulas, and the pre-flight checklist.
+                      </p>
+                    </div>
+
+                    {analysis.master_guide_audit?.target_score_verdict && (
+                      <div className="bg-slate-950/80 border border-indigo-500/30 rounded-xl p-4 text-right flex-shrink-0 min-w-[240px]">
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Recruiter Screening Tier</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                          {analysis.master_guide_audit.target_score_verdict.tier}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {analysis.master_guide_audit.target_score_verdict.tier_percentile}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Realistic Target Golden Rule Notice (Page 17) */}
+                  <div className="mt-4 pt-4 border-t border-slate-800/80 flex items-start gap-2.5 text-xs text-amber-200/90 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
+                    <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-300">Master Guide Rule (Page 17): </span>
+                      {analysis.master_guide_audit?.target_score_verdict?.realistic_target_advice ||
+                        "Aim for 75–85% on each application. Above 85% is excellent. Anything below 60% requires rewriting before submitting. Avoid chasing 100% (a 100% score indicates unnatural keyword stuffing that recruiters spot instantly)."}
+                    </div>
+                  </div>
+                </div>
+
+                {/* The 60-Second Mistake Audit (Page 33) */}
+                {analysis.master_guide_audit?.sixty_second_audit && (
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <Clock className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <h4 className="font-bold text-white text-base">The 60-Second Mistake Audit (Section 09, Page 33)</h4>
+                          <p className="text-xs text-slate-400">
+                            The 5 fastest checks that prevent 80% of automated ATS parser drops.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs px-3 py-1 bg-blue-500/10 text-blue-300 border border-blue-500/30 rounded-lg font-bold">
+                          {analysis.master_guide_audit.sixty_second_audit.passed_count}/5 Checks Passed
+                        </span>
+                        {analysis.master_guide_audit.sixty_second_audit.score_gain_potential > 0 && (
+                          <span className="text-xs px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-lg font-bold">
+                            +{analysis.master_guide_audit.sixty_second_audit.score_gain_potential} pts easy gain
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1">
+                      {analysis.master_guide_audit.sixty_second_audit.checks?.map((chk: any) => (
+                        <div
+                          key={chk.id}
+                          className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+                            chk.passed
+                              ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                              : "bg-rose-950/20 border-rose-500/30 text-rose-200"
+                          }`}
+                        >
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check #{chk.id}</span>
+                              {chk.passed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                              )}
+                            </div>
+                            <p className="font-bold text-xs text-white leading-snug">{chk.name}</p>
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-2 leading-relaxed opacity-90">{chk.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Universal Bullet Formula (Google X-Y-Z) Stats (Page 13 & 30) */}
+                {analysis.master_guide_audit?.universal_bullet_stats && (
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles className="w-5 h-5 text-teal-400" />
+                        <div>
+                          <h4 className="font-bold text-white text-base">Universal Bullet-Writing Formula (Google X-Y-Z)</h4>
+                          <p className="text-xs text-slate-400">
+                            Every bullet should follow: <code className="text-teal-300 font-mono">[Action verb] + [What you did] + [How / with what tech] + [Quantified impact]</code>
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs px-3 py-1 bg-teal-500/10 text-teal-300 border border-teal-500/30 rounded-lg font-bold">
+                        {analysis.master_guide_audit.universal_bullet_stats.xyz_compliance_rate_pct}% X-Y-Z Compliant
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+                        <p className="text-slate-400 text-xs">Total Bullets</p>
+                        <p className="text-2xl font-bold text-white mt-1">
+                          {analysis.master_guide_audit.universal_bullet_stats.total_bullets}
+                        </p>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+                        <p className="text-slate-400 text-xs">Quantified with Numbers</p>
+                        <p className="text-2xl font-bold text-emerald-400 mt-1">
+                          {analysis.master_guide_audit.universal_bullet_stats.quantified_bullets}
+                        </p>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+                        <p className="text-slate-400 text-xs">Quantification Rate</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">
+                          {analysis.master_guide_audit.universal_bullet_stats.quantification_rate_pct}%
+                        </p>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+                        <p className="text-slate-400 text-xs">Action Verb + Metric Verified</p>
+                        <p className="text-2xl font-bold text-teal-400 mt-1">
+                          {analysis.master_guide_audit.universal_bullet_stats.xyz_compliant_bullets}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* The 12 Common Resume Mistakes Inspector (Pages 32-34) */}
+                {analysis.master_guide_audit?.twelve_common_mistakes && (
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div>
+                        <h4 className="font-bold text-white text-base">The 12 Common Resume Mistakes (Section 09, Pages 32–34)</h4>
+                        <p className="text-xs text-slate-400">
+                          The 12 errors that silently cause rejection at TCS, Infosys, Amazon, and Google ATS screens.
+                        </p>
+                      </div>
+                      <span className="text-xs px-3 py-1 bg-slate-800 text-slate-200 font-bold rounded-lg border border-slate-700">
+                        {analysis.master_guide_audit.mistakes_passed_count || 0}/12 Clean
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {analysis.master_guide_audit.twelve_common_mistakes.map((m: any) => (
+                        <div
+                          key={m.id}
+                          className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+                            m.passed
+                              ? "bg-slate-950/80 border-slate-800 text-slate-300"
+                              : "bg-rose-950/20 border-rose-500/40 text-rose-200"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-slate-400">#{m.id}</span>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                    m.severity === "critical"
+                                      ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                      : m.severity === "high"
+                                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                      : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                  }`}
+                                >
+                                  {m.severity}
+                                </span>
+                                {m.passed ? (
+                                  <span className="flex items-center gap-1 text-emerald-400 font-bold text-xs">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Pass
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-rose-400 font-bold text-xs">
+                                    <AlertTriangle className="w-3.5 h-3.5" /> Action Needed
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <h5 className="font-bold text-white text-sm mb-1">{m.name}</h5>
+                            <p className="text-xs text-slate-400 mb-2">
+                              <span className="text-slate-500 font-semibold">Evidence: </span>
+                              {m.evidence}
+                            </p>
+                          </div>
+                          {!m.passed && (
+                            <div className="mt-2 pt-2 border-t border-rose-500/20 text-xs text-amber-300">
+                              <span className="font-bold text-amber-400">Fix: </span>
+                              {m.fix}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pre-Flight Master Checklist (Pages 34-35) */}
+                {analysis.master_guide_audit?.checklist && (
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="border-b border-slate-800 pb-3">
+                      <h4 className="font-bold text-white text-base">Final ATS Pre-Flight Checklist (Section 10, Pages 34–35)</h4>
+                      <p className="text-xs text-slate-400">
+                        The master pre-flight checklist to run before clicking Submit on any application.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Formatting Checklist */}
+                      <div className="space-y-2.5">
+                        <h5 className="font-bold text-xs uppercase tracking-wider text-blue-400 border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                          <FileCheck className="w-4 h-4" /> Formatting Checklist
+                        </h5>
+                        <div className="space-y-2">
+                          {analysis.master_guide_audit.checklist.formatting?.map((item: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              {item.checked ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              )}
+                              <span className={item.checked ? "text-slate-300" : "text-amber-200"}>{item.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Content Checklist */}
+                      <div className="space-y-2.5">
+                        <h5 className="font-bold text-xs uppercase tracking-wider text-teal-400 border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4" /> Content Checklist
+                        </h5>
+                        <div className="space-y-2">
+                          {analysis.master_guide_audit.checklist.content?.map((item: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              {item.checked ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              )}
+                              <span className={item.checked ? "text-slate-300" : "text-amber-200"}>{item.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Pre-Submit Checklist */}
+                      <div className="space-y-2.5">
+                        <h5 className="font-bold text-xs uppercase tracking-wider text-indigo-400 border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                          <Target className="w-4 h-4" /> Pre-Submit Checklist
+                        </h5>
+                        <div className="space-y-2">
+                          {analysis.master_guide_audit.checklist.pre_submit?.map((item: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              {item.checked ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              )}
+                              <span className={item.checked ? "text-slate-300" : "text-amber-200"}>{item.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

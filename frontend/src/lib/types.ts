@@ -288,6 +288,7 @@ export type ResumeAnalysis = {
   word_metrics?: WordMetrics;
   resume_worded_scores?: ResumeWordedScores;
   ai_agent_review?: AIAgentReview | null;
+  master_guide_audit?: Record<string, any>;
   methodology_info?: string;
   error_message?: string | null;
   created_at: string;

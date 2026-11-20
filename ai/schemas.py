@@ -43,6 +43,7 @@ class ResumeAnalysisResponse(BaseModel):
     word_metrics: dict[str, Any] = Field(default_factory=dict)
     resume_worded_scores: dict[str, int] = Field(default_factory=dict)
     ai_agent_review: dict[str, Any] | None = None
+    master_guide_audit: dict[str, Any] = Field(default_factory=dict)
     methodology_info: str = ""
     error_message: str | None = None
     created_at: datetime
