@@ -12,17 +12,10 @@ async function forward(request: NextRequest, context: RouteContext) {
     process.env.API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    ""
+    "http://127.0.0.1:8001"
   )
     .trim()
     .replace(/\/+$/, "");
-
-  if (!baseUrl) {
-    return Response.json(
-      { detail: "The API_BASE_URL server setting is not configured." },
-      { status: 503 },
-    );
-  }
 
   const { path } = await context.params;
   const pathname = path.map(encodeURIComponent).join("/");
